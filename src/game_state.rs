@@ -39,7 +39,7 @@ impl GameState {
         let mut grid = [[Tile { kind: TileType::Empty, offset_y: 0.0 }; GRID_HEIGHT]; GRID_WIDTH];
         for x in 0..GRID_WIDTH { for y in 0..GRID_HEIGHT { grid[x][y] = Tile::new_random(); }}
 
-        GameState {
+        let mut game = GameState {
             grid,
             selected: None,
             total_points: 0,
@@ -49,7 +49,19 @@ impl GameState {
             phase: GamePhase::Playing,
             is_farming: false, // Start normally
             beryl_texture,
+        };
+
+        // Clear any initial matches
+        loop {
+            let had_matches = game.resolve_matches();
+            if had_matches {
+                game.apply_gravity();
+            } else {
+                break;
+            }
         }
+
+        game
     }
 
     // Helper to calculate "Wallet" (Leaves)
@@ -79,20 +91,61 @@ impl GameState {
         for (rx, ry) in to_remove { self.grid[rx][ry].kind = TileType::Empty; }
         true
     }
-
     pub fn apply_gravity(&mut self) {
         for x in 0..GRID_WIDTH {
-            let mut valid_tiles = vec![];
-            for y in 0..GRID_HEIGHT { if self.grid[x][y].kind != TileType::Empty { valid_tiles.push(self.grid[x][y]); }}
-            let missing = GRID_HEIGHT - valid_tiles.len();
-            for y in 0..missing { self.grid[x][y] = Tile::new_random(); }
-            for (i, tile) in valid_tiles.into_iter().enumerate() { self.grid[x][missing + i] = tile; }
+            // Step 1: Scan from BOTTOM to TOP (y=7 down to y=0)
+            for y in (0..GRID_HEIGHT).rev() {
+                if self.grid[x][y].kind == TileType::Empty {
+                    // Look for a non-empty tile ABOVE (indices 0 to y-1)
+                    // We use .rev() to find the CLOSEST tile first
+                    if let Some(source_y) = (0..y).rev().find(|&sy| self.grid[x][sy].kind != TileType::Empty) {
+                        let distance_moved = y - source_y;
+                        self.grid[x][y] = self.grid[x][source_y];
+                        self.grid[x][y].offset_y = -(distance_moved as f32 * TILE_SIZE);
+                        self.grid[x][source_y].kind = TileType::Empty;
+                    }
+                }
+            }
+            
+            // Step 2: Fill the remaining empty slots at the top with new tiles
+            for y in 0..GRID_HEIGHT {
+                if self.grid[x][y].kind == TileType::Empty {
+                    self.grid[x][y] = Tile::new_random();
+                    self.grid[x][y].offset_y = -(TILE_SIZE * 4.0); // Spawn from above
+                }
+            }
+        }
+    }
+
+    // Animate tile offsets back to 0
+    pub fn animate_tiles(&mut self, delta: f32) {
+        let animation_speed = 800.0; // Pixels per second
+        for x in 0..GRID_WIDTH {
+            for y in 0..GRID_HEIGHT {
+                if self.grid[x][y].offset_y != 0.0 {
+                    let move_amount = animation_speed * delta;
+                    if self.grid[x][y].offset_y < 0.0 {
+                        self.grid[x][y].offset_y += move_amount;
+                        if self.grid[x][y].offset_y > 0.0 {
+                            self.grid[x][y].offset_y = 0.0;
+                        }
+                    } else {
+                        self.grid[x][y].offset_y -= move_amount;
+                        if self.grid[x][y].offset_y < 0.0 {
+                            self.grid[x][y].offset_y = 0.0;
+                        }
+                    }
+                }
+            }
         }
     }
 
     pub fn update(&mut self) {
         match self.phase {
             GamePhase::Playing => {
+                // Animate tile offsets
+                self.animate_tiles(get_frame_time());
+
                 // 1. MOUSE LOGIC FOR GRID
                 if is_mouse_button_pressed(MouseButton::Left) {
                     let (mx, my) = mouse_position();
@@ -119,7 +172,15 @@ impl GameState {
                                     let dx = (gx as isize - sx as isize).abs(); let dy = (gy as isize - sy as isize).abs();
                                     if (dx == 1 && dy == 0) || (dx == 0 && dy == 1) {
                                         let temp = self.grid[sx][sy]; self.grid[sx][sy] = self.grid[gx][gy]; self.grid[gx][gy] = temp;
-                                        loop { if !self.resolve_matches() { break; } self.apply_gravity(); }
+                                        // Cascade: resolve matches and apply gravity until stable
+                                        loop {
+                                            let had_matches = self.resolve_matches();
+                                            if had_matches {
+                                                self.apply_gravity();
+                                            } else {
+                                                break;
+                                            }
+                                        }
                                         self.selected = None;
                                     } else { self.selected = Some((gx, gy)); }
                                 }
