@@ -21,6 +21,7 @@ pub struct GameState {
 
     // Asset Storage
     pub beryl_texture: Texture2D,
+    pub moon_texture: Texture2D,
     
     // --- THE BACKEND VARIABLES ---
     pub total_points: i32, // Lifetime score (The "Level" Bar)
@@ -35,7 +36,7 @@ pub struct GameState {
 }
 
 impl GameState {
-    pub fn new(beryl_texture: Texture2D) -> Self {
+    pub fn new(beryl_texture: Texture2D, moon_texture: Texture2D) -> Self {
         let mut grid = [[Tile { kind: TileType::Empty, offset_y: 0.0 }; GRID_HEIGHT]; GRID_WIDTH];
         for x in 0..GRID_WIDTH { for y in 0..GRID_HEIGHT { grid[x][y] = Tile::new_random(); }}
 
@@ -49,6 +50,7 @@ impl GameState {
             phase: GamePhase::Playing,
             is_farming: false, // Start normally
             beryl_texture,
+            moon_texture,
         };
 
         // Clear any initial matches
@@ -282,6 +284,25 @@ impl GameState {
                             },
                         );
                     }, // <--- Comma here helps the compiler!
+                    TileType::Moon => {
+                        let sprite_size = 64.0;
+                        draw_texture_ex(
+                            &self.moon_texture,
+                            draw_x,
+                            draw_y,
+                            WHITE,
+                            DrawTextureParams {
+                                dest_size: Some(vec2(TILE_SIZE, TILE_SIZE)),
+                                source: Some(Rect::new(
+                                    current_frame * sprite_size as f32,
+                                    0.0,
+                                    sprite_size as f32,
+                                    sprite_size as f32
+                                )),
+                                ..Default::default()
+                            },
+                        );
+                    },
                     
                     _ => {
                         // Draw everything else normally

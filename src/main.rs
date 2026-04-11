@@ -8,13 +8,15 @@ use game_state::GameState;
 async fn main() {
     rand::srand(macroquad::miniquad::date::now() as u64);
 
-    // 1. LOAD THE ASSET
+    // 1. LOAD THE ASSETS
     // We use "nearest" filter so pixels stay sharp when scaled up
     let beryl_texture = load_texture("assets/beryl_sheet.png").await.unwrap();
     beryl_texture.set_filter(FilterMode::Nearest);
+    let moon_texture = load_texture("assets/moon_sheet.png").await.unwrap();
+    moon_texture.set_filter(FilterMode::Nearest);
 
     // 2. PASS IT TO THE GAME
-    let mut game = GameState::new(beryl_texture);
+    let mut game = GameState::new(beryl_texture, moon_texture);
 
     loop {
         game.update();
