@@ -35,7 +35,7 @@ impl Tile {
             TileType::Sun => GOLD,
             TileType::Moon => SKYBLUE,
             TileType::Skull => BEIGE,
-            TileType::Leaf => LIME,
+            TileType::Leaf => BLANK, // Drawn via texture; color unused
             TileType::Empty => BLANK,
             
             // EXOTIC LOGIC: Changes based on the Level Set

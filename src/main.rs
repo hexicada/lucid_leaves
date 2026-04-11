@@ -14,9 +14,11 @@ async fn main() {
     beryl_texture.set_filter(FilterMode::Nearest);
     let moon_texture = load_texture("assets/moon_sheet.png").await.unwrap();
     moon_texture.set_filter(FilterMode::Nearest);
+    let leaf_texture = load_texture("assets/leaf_sheet.png").await.unwrap();
+    leaf_texture.set_filter(FilterMode::Nearest);
 
     // 2. PASS IT TO THE GAME
-    let mut game = GameState::new(beryl_texture, moon_texture);
+    let mut game = GameState::new(beryl_texture, moon_texture, leaf_texture);
 
     loop {
         game.update();
