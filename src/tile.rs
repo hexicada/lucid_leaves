@@ -6,7 +6,7 @@ use rand::gen_range;
 pub enum TileType {
     Sun,
     Moon,
-    Skull,
+    Water,
     Leaf,
     Exotic, // The shape-shifter
     Empty,
@@ -23,7 +23,7 @@ impl Tile {
         let kind = match gen_range(0, 5) {
             0 => TileType::Sun,
             1 => TileType::Moon,
-            2 => TileType::Skull,
+            2 => TileType::Water,
             3 => TileType::Leaf,
             _ => TileType::Exotic,
         };
@@ -34,7 +34,7 @@ impl Tile {
         match self.kind {
             TileType::Sun => GOLD,
             TileType::Moon => SKYBLUE,
-            TileType::Skull => BEIGE,
+            TileType::Water => BLUE,
             TileType::Leaf => BLANK, // Drawn via texture; color unused
             TileType::Empty => BLANK,
             

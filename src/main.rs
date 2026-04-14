@@ -2,9 +2,22 @@ use macroquad::prelude::*;
 
 mod tile;
 mod game_state;
+mod inventory;
+mod garden;
+mod shop;
 use game_state::GameState;
 
-#[macroquad::main("Lucid Leaves")]
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "Lucid Leaves".to_owned(),
+        window_width: 800,
+        window_height: 580,
+        window_resizable: true,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     rand::srand(macroquad::miniquad::date::now() as u64);
 
