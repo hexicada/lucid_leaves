@@ -114,9 +114,11 @@ pub struct Garden {
 
 ### Visual Direction
 
-- Isometric tile-based grid (to differentiate strongly from game board)
-- Each plot is a cell showing the current plant stage sprite
-- player sprite is not shown 
+- Hand-drawn garden background with a single large soil/plot zone (avoid true isometric implementation)
+- Plot zone is responsive and computed from screen size ratios, not hardcoded pixel anchors
+- Start with 3x3 plots inside the zone; each cell renders current plant stage sprite
+- Keep layout math in one place (garden layout helper) so display compatibility is preserved across window sizes
+- Optional foreground overlay layer (fence/trellis/props) can render above plants for depth illusion
 - Peaceful, no time pressure — this is the rest phase
 - Background distinct from board (soft greens, soil textures)
 
@@ -258,4 +260,16 @@ Tone: cozy, whimsical, Studio Ghibli-adjacent. Never dark. Wizard mice are antag
 
 ---
 
-*This brief was written as a design handoff. Ask the player (hexicada) before making structural changes to existing match-3 logic. When in doubt, build new, don't refactor old.*
+---
+
+## Curio: Gem Animation Phase Desynchronization
+
+**Current artifact:** The exotic gem sprite sheet (41 frames at 13 FPS = ~3.15s cycle) drifts out of sync with the older ping-pong sprites (24 frames at 13 FPS = ~1.85s cycle). This creates a pulsing appear/disappear effect as the gems periodically fall in and out of phase with each other.
+
+**Possible feature:** Instead of fixing this immediately, consider turning it into a **"Tarquin's Reality Fracture"** quest or biome modifier:
+- Tarquin alerts you that something has gone catastrophically wrong—the gem barriers between realities have weakened
+- Gems begin phasing in and out of visibility unpredictably
+- The board becomes harder to read, but unphased gems might behave differently (glow differently, awards bonus points, etc.)
+- Could be a one-time event quest or a reusable boardModifier difficulty spike
+
+This would be worth implementing if the visual effect feels intentional rather than buggy. Otherwise, normalize all sprite cycles (e.g., all looping, all ping-pong, all the same frame count) to keep timing coherent.

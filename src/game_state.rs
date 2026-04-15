@@ -73,6 +73,9 @@ pub struct GameState {
     pub beryl_texture: Texture2D,
     pub moon_texture: Texture2D,
     pub leaf_texture: Texture2D,
+    pub exotic_texture: Texture2D,
+    pub water_texture: Texture2D,
+    pub garden_bg_texture: Texture2D,
     
     // --- THE BACKEND VARIABLES ---
     pub total_points: i32, // Lifetime score (The "Level" Bar)
@@ -90,7 +93,14 @@ pub struct GameState {
 }
 
 impl GameState {
-    pub fn new(beryl_texture: Texture2D, moon_texture: Texture2D, leaf_texture: Texture2D) -> Self {
+    pub fn new(
+        beryl_texture: Texture2D,
+        moon_texture: Texture2D,
+        leaf_texture: Texture2D,
+        exotic_texture: Texture2D,
+        water_texture: Texture2D,
+        garden_bg_texture: Texture2D,
+    ) -> Self {
         let mut grid = [[Tile { kind: TileType::Empty, offset_y: 0.0 }; GRID_HEIGHT]; GRID_WIDTH];
         for x in 0..GRID_WIDTH { for y in 0..GRID_HEIGHT { grid[x][y] = Tile::new_random(); }}
 
@@ -109,6 +119,9 @@ impl GameState {
             beryl_texture,
             moon_texture,
             leaf_texture,
+            exotic_texture,
+            water_texture,
+            garden_bg_texture,
         };
 
         // Clear any initial matches
@@ -256,141 +269,6 @@ impl GameState {
         let sw = screen_width();
         let sh = screen_height();
         (sw * 0.35, sh * 0.72, sw * 0.30, sh * 0.10)
-    }
-
-    pub fn draw_water_gem(&self, draw_x: f32, draw_y: f32, time: f64, tile_size: f32) {
-        let size = tile_size - 2.0;
-        let cx = draw_x + size * 0.5;
-        let bob = (time as f32 * 2.4).sin() * 1.3;
-        let pulse = ((time as f32 * 2.0).sin() + 1.0) * 0.5;
-        let body_cy = draw_y + size * 0.57 + bob;
-
-        draw_circle(
-            cx,
-            draw_y + size * 0.9,
-            size * (0.2 + pulse * 0.02),
-            color_u8!(10, 25, 40, 85),
-        );
-
-        draw_circle(cx, body_cy, size * 0.27, color_u8!(35, 150, 235, 255));
-        draw_circle(
-            cx - size * 0.14,
-            body_cy - size * 0.02,
-            size * 0.17,
-            color_u8!(75, 185, 248, 255),
-        );
-        draw_circle(
-            cx + size * 0.14,
-            body_cy - size * 0.02,
-            size * 0.17,
-            color_u8!(55, 170, 242, 255),
-        );
-
-        let top = vec2(cx, draw_y + size * 0.12 + bob);
-        let left_shoulder = vec2(draw_x + size * 0.34, draw_y + size * 0.44 + bob);
-        let right_shoulder = vec2(draw_x + size * 0.66, draw_y + size * 0.44 + bob);
-        draw_triangle(top, left_shoulder, right_shoulder, color_u8!(155, 230, 255, 245));
-
-        draw_line(
-            draw_x + size * 0.32,
-            draw_y + size * 0.47 + bob,
-            draw_x + size * 0.27,
-            draw_y + size * 0.73 + bob,
-            2.0,
-            color_u8!(155, 230, 255, 130),
-        );
-        draw_line(
-            draw_x + size * 0.68,
-            draw_y + size * 0.47 + bob,
-            draw_x + size * 0.73,
-            draw_y + size * 0.73 + bob,
-            2.0,
-            color_u8!(155, 230, 255, 130),
-        );
-
-        draw_circle(
-            draw_x + size * 0.43,
-            draw_y + size * 0.33 + bob,
-            size * 0.08,
-            color_u8!(235, 250, 255, 170),
-        );
-        draw_circle(
-            draw_x + size * 0.56,
-            draw_y + size * 0.5 + bob,
-            size * 0.045,
-            color_u8!(200, 240, 255, 110),
-        );
-    }
-
-    pub fn draw_exotic_gem(&self, draw_x: f32, draw_y: f32, time: f64, tile_size: f32) {
-        let size = tile_size - 2.0;
-        let cx = draw_x + size * 0.5;
-        let bob = (time as f32 * 2.8 + 0.6).sin() * 1.1;
-        let pulse = ((time as f32 * 3.0).sin() + 1.0) * 0.5;
-
-        let top = vec2(cx, draw_y + size * 0.05 + bob);
-        let upper_left = vec2(draw_x + size * 0.24, draw_y + size * 0.29 + bob);
-        let upper_right = vec2(draw_x + size * 0.76, draw_y + size * 0.29 + bob);
-        let mid_left = vec2(draw_x + size * 0.18, draw_y + size * 0.52 + bob);
-        let mid_right = vec2(draw_x + size * 0.82, draw_y + size * 0.52 + bob);
-        let lower_left = vec2(draw_x + size * 0.3, draw_y + size * 0.76 + bob);
-        let lower_right = vec2(draw_x + size * 0.7, draw_y + size * 0.76 + bob);
-        let bottom = vec2(cx, draw_y + size * 0.95 + bob);
-        let center = vec2(cx, draw_y + size * 0.5 + bob);
-
-        draw_circle(
-            cx,
-            draw_y + size * 0.91,
-            size * (0.21 + pulse * 0.02),
-            color_u8!(45, 8, 10, 95),
-        );
-
-        draw_triangle(top, upper_left, center, color_u8!(255, 185, 185, 255));
-        draw_triangle(top, center, upper_right, color_u8!(255, 130, 130, 255));
-        draw_triangle(upper_left, mid_left, center, color_u8!(228, 65, 72, 255));
-        draw_triangle(center, mid_right, upper_right, color_u8!(192, 33, 40, 255));
-        draw_triangle(mid_left, lower_left, center, color_u8!(168, 20, 28, 255));
-        draw_triangle(center, lower_right, mid_right, color_u8!(148, 14, 22, 255));
-        draw_triangle(lower_left, bottom, center, color_u8!(118, 8, 18, 255));
-        draw_triangle(center, bottom, lower_right, color_u8!(180, 28, 35, 255));
-
-        draw_line(top.x, top.y, upper_left.x, upper_left.y, 2.0, color_u8!(255, 226, 226, 190));
-        draw_line(top.x, top.y, upper_right.x, upper_right.y, 2.0, color_u8!(255, 226, 226, 190));
-        draw_line(upper_left.x, upper_left.y, mid_left.x, mid_left.y, 2.0, color_u8!(255, 166, 166, 150));
-        draw_line(upper_right.x, upper_right.y, mid_right.x, mid_right.y, 2.0, color_u8!(255, 166, 166, 150));
-        draw_line(mid_left.x, mid_left.y, lower_left.x, lower_left.y, 2.0, color_u8!(245, 120, 120, 135));
-        draw_line(mid_right.x, mid_right.y, lower_right.x, lower_right.y, 2.0, color_u8!(245, 120, 120, 135));
-        draw_line(upper_left.x, upper_left.y, center.x, center.y, 1.5, color_u8!(255, 240, 240, 170));
-        draw_line(upper_right.x, upper_right.y, center.x, center.y, 1.5, color_u8!(255, 240, 240, 170));
-        draw_line(lower_left.x, lower_left.y, bottom.x, bottom.y, 2.0, color_u8!(255, 110, 110, 145));
-        draw_line(lower_right.x, lower_right.y, bottom.x, bottom.y, 2.0, color_u8!(255, 110, 110, 145));
-
-        // Side spikes make exotic read sharper than the rounded water droplet.
-        draw_triangle(
-            mid_left,
-            vec2(draw_x + size * 0.06, draw_y + size * 0.5 + bob),
-            vec2(draw_x + size * 0.2, draw_y + size * 0.62 + bob),
-            color_u8!(170, 18, 25, 225),
-        );
-        draw_triangle(
-            mid_right,
-            vec2(draw_x + size * 0.94, draw_y + size * 0.5 + bob),
-            vec2(draw_x + size * 0.8, draw_y + size * 0.62 + bob),
-            color_u8!(170, 18, 25, 225),
-        );
-
-        draw_circle(
-            draw_x + size * 0.42,
-            draw_y + size * 0.28 + bob,
-            size * 0.075,
-            color_u8!(255, 236, 236, 170),
-        );
-        draw_circle(
-            draw_x + size * 0.58,
-            draw_y + size * 0.45 + bob,
-            size * 0.04,
-            color_u8!(255, 210, 210, 100),
-        );
     }
 
     pub fn resolve_matches(&mut self) -> bool {
@@ -633,9 +511,38 @@ impl GameState {
         if self.phase == GamePhase::Garden {
             let sw = screen_width();
             let sh = screen_height();
-            clear_background(color_u8!(28, 52, 30, 255));
-            draw_text("THE GARDEN", sw * 0.30, sh * 0.18, (sh * 0.10).max(36.0), color_u8!(220, 245, 185, 255));
-            draw_text("Rest phase: tend plots and manage resources", sw * 0.17, sh * 0.30, (sh * 0.045).max(20.0), WHITE);
+            draw_texture_ex(
+                &self.garden_bg_texture,
+                0.0,
+                0.0,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(sw, sh)),
+                    ..Default::default()
+                },
+            );
+
+            let zone_x = sw * 0.16;
+            let zone_y = sh * 0.25;
+            let zone_w = sw * 0.68;
+            let zone_h = sh * 0.48;
+            draw_rectangle_lines(zone_x, zone_y, zone_w, zone_h, 2.0, color_u8!(205, 240, 190, 180));
+
+            let cols = 3;
+            let rows = 3;
+            let cell_w = zone_w / cols as f32;
+            let cell_h = zone_h / rows as f32;
+            for row in 0..rows {
+                for col in 0..cols {
+                    let px = zone_x + col as f32 * cell_w;
+                    let py = zone_y + row as f32 * cell_h;
+                    draw_rectangle_lines(px, py, cell_w, cell_h, 1.0, color_u8!(190, 230, 175, 160));
+                }
+            }
+
+            draw_rectangle(0.0, 0.0, sw, sh * 0.12, color_u8!(14, 28, 14, 175));
+            draw_text("THE GARDEN", sw * 0.03, sh * 0.08, (sh * 0.07).max(30.0), color_u8!(220, 245, 185, 255));
+            draw_text("Rest phase: tend plots and manage resources", sw * 0.34, sh * 0.08, (sh * 0.035).max(18.0), WHITE);
 
             let (rx, ry, rw, rh) = Self::garden_return_button_rect();
             draw_rectangle(rx, ry, rw, rh, color_u8!(52, 80, 58, 255));
@@ -663,18 +570,27 @@ impl GameState {
             return;
         }
 
-        // --- NEW: ANIMATION MATH (Global Time) ---
-        // Cycles frames 0->12->0 over roughly 2 seconds
+        // --- ANIMATION MATH (Global Time) ---
         let time = get_time();
         let speed = 13.0; // 13 frames per second
-        let total_frames = 24.0; // 13 forward + 11 back = 24 total loop
         
-        // The "Ping Pong" Index Calculation
-        let mut frame_index = (time * speed) % total_frames;
-        if frame_index > 12.0 {
-            frame_index = 24.0 - frame_index; // Reverse it for the second half
+        // For 13-frame sprites (Sun, Moon, Leaf): ping-pong cycle
+        let total_frames_13 = 24.0; // 13 forward + 11 back = 24 total loop
+        let mut frame_index_13 = (time * speed) % total_frames_13;
+        if frame_index_13 > 12.0 {
+            frame_index_13 = 24.0 - frame_index_13; // Reverse for second half
         }
-        let current_frame = frame_index.floor() as f32; // Convert to flat number (0..12)
+        let current_frame_13 = frame_index_13.floor() as f32;
+        
+        // For 41-frame sprite (Exotic): simple loop
+        let total_frames_41 = 41.0;
+        let frame_index_41 = (time * speed) % total_frames_41;
+        let current_frame_41 = frame_index_41.floor() as f32;
+
+        // For 45-frame sprite (Water): simple loop
+        let total_frames_45 = 45.0;
+        let frame_index_45 = (time * speed) % total_frames_45;
+        let current_frame_45 = frame_index_45.floor() as f32;
 
        // 1. DRAW GRID
         for x in 0..GRID_WIDTH {
@@ -695,7 +611,7 @@ impl GameState {
                             DrawTextureParams {
                                 dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
                                 source: Some(Rect::new(
-                                    current_frame * sprite_size as f32, 
+                                    current_frame_13 * sprite_size as f32, 
                                     0.0,                        
                                     sprite_size as f32,                
                                     sprite_size as f32                 
@@ -714,7 +630,7 @@ impl GameState {
                             DrawTextureParams {
                                 dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
                                 source: Some(Rect::new(
-                                    current_frame * sprite_size as f32,
+                                    current_frame_13 * sprite_size as f32,
                                     0.0,
                                     sprite_size as f32,
                                     sprite_size as f32
@@ -733,7 +649,7 @@ impl GameState {
                             DrawTextureParams {
                                 dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
                                 source: Some(Rect::new(
-                                    current_frame * sprite_size as f32,
+                                    current_frame_13 * sprite_size as f32,
                                     0.0,
                                     sprite_size as f32,
                                     sprite_size as f32
@@ -743,10 +659,42 @@ impl GameState {
                         );
                     },
                     TileType::Exotic => {
-                        self.draw_exotic_gem(draw_x, draw_y, time, layout.tile_size);
+                        let sprite_size = 64.0;
+                        draw_texture_ex(
+                            &self.exotic_texture,
+                            draw_x,
+                            draw_y,
+                            WHITE,
+                            DrawTextureParams {
+                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                source: Some(Rect::new(
+                                    current_frame_41 * sprite_size as f32,
+                                    0.0,
+                                    sprite_size as f32,
+                                    sprite_size as f32
+                                )),
+                                ..Default::default()
+                            },
+                        );
                     },
                     TileType::Water => {
-                        self.draw_water_gem(draw_x, draw_y, time, layout.tile_size);
+                        let sprite_size = 64.0;
+                        draw_texture_ex(
+                            &self.water_texture,
+                            draw_x,
+                            draw_y,
+                            WHITE,
+                            DrawTextureParams {
+                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                source: Some(Rect::new(
+                                    current_frame_45 * sprite_size as f32,
+                                    0.0,
+                                    sprite_size as f32,
+                                    sprite_size as f32
+                                )),
+                                ..Default::default()
+                            },
+                        );
                     },
                     
                     _ => {

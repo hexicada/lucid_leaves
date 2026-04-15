@@ -29,9 +29,22 @@ async fn main() {
     moon_texture.set_filter(FilterMode::Nearest);
     let leaf_texture = load_texture("assets/leaf_sheet.png").await.unwrap();
     leaf_texture.set_filter(FilterMode::Nearest);
+    let exotic_texture = load_texture("assets/exotic_sheet.png").await.unwrap();
+    exotic_texture.set_filter(FilterMode::Nearest);
+    let water_texture = load_texture("assets/water_sheet.png").await.unwrap();
+    water_texture.set_filter(FilterMode::Nearest);
+    let garden_bg_texture = load_texture("assets/gardenbgplots.png").await.unwrap();
+    garden_bg_texture.set_filter(FilterMode::Nearest);
 
     // 2. PASS IT TO THE GAME
-    let mut game = GameState::new(beryl_texture, moon_texture, leaf_texture);
+    let mut game = GameState::new(
+        beryl_texture,
+        moon_texture,
+        leaf_texture,
+        exotic_texture,
+        water_texture,
+        garden_bg_texture,
+    );
 
     loop {
         game.update();

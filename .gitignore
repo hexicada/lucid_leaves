@@ -5,3 +5,15 @@ target/
 .DS_Store
 
 **/candidates/
+
+# Runtime/editor logs
+/debug.log
+*.log
+
+# Sprite backup exports
+*_sheetold.png
+
+# Raw art-source folders/scripts (keep runtime sheets in assets/)
+/Exotic_Sprites/
+/Opal_Sprites/
+/Moon_Sprites/pack_sprites_generic.py
