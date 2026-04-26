@@ -15,6 +15,7 @@ pub const DROP_RATE_SEED_DAY: f32 = 0.20;
 pub const DROP_RATE_MOON_ITEM: f32 = 0.10;
 pub const DROP_RATE_FERTILIZER: f32 = 0.15;
 pub const LEAF_DROP_BONUS: i32 = 30;
+pub const MATCH_CLEAR_DELAY: f32 = 0.12;
 
 /// Computed each frame from screen dimensions so the layout adapts to any window size.
 pub struct Layout {
@@ -65,17 +66,45 @@ pub enum GamePhase {
     BossHunt,        // Biome-boundary boss encounter
 }
 
+/// Gem textures for a single biome. Biomes (in order):
+/// 0 - Forest Floor | 1 - Deep Cave    | 2 - Volcanic Rift | 3 - Frozen Tundra
+/// 4 - Ocean Trench | 5 - Sky Realm    | 6 - Fungal Wastes  | 7 - Celestial Void
+pub struct BiomeTextures {
+    pub sun:    Texture2D, // Gem 0 — e.g. Beryl / Crystal / Magma ...
+    pub moon:   Texture2D, // Gem 1
+    pub leaf:   Texture2D, // Gem 2
+    pub exotic: Texture2D, // Gem 3
+    pub water:  Texture2D, // Gem 4
+    pub overlay: Option<Texture2D>, // Optional board overlay (scaled to board bounds)
+}
+
+#[derive(Clone, Copy)]
+pub struct GemParticle {
+    pub x: f32,
+    pub y: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub life: f32,
+    pub max_life: f32,
+    pub size: f32,
+    pub color: Color,
+}
+
 pub struct GameState {
     pub grid: [[Tile; GRID_HEIGHT]; GRID_WIDTH],
     pub selected: Option<(usize, usize)>,
 
     // Asset Storage
-    pub beryl_texture: Texture2D,
-    pub moon_texture: Texture2D,
-    pub leaf_texture: Texture2D,
-    pub exotic_texture: Texture2D,
-    pub water_texture: Texture2D,
+    pub biome_sets: Vec<BiomeTextures>,
     pub garden_bg_texture: Texture2D,
+
+    // Match juice state
+    pub pending_matches: Vec<(usize, usize, TileType)>,
+    pub particles: Vec<GemParticle>,
+    pub clear_timer: f32,
+    pub cascade_pulse: f32,
+    pub pulse_color: Color,
+    pub clear_was_cascade: bool,
     
     // --- THE BACKEND VARIABLES ---
     pub total_points: i32, // Lifetime score (The "Level" Bar)
@@ -94,11 +123,7 @@ pub struct GameState {
 
 impl GameState {
     pub fn new(
-        beryl_texture: Texture2D,
-        moon_texture: Texture2D,
-        leaf_texture: Texture2D,
-        exotic_texture: Texture2D,
-        water_texture: Texture2D,
+        biome_sets: Vec<BiomeTextures>,
         garden_bg_texture: Texture2D,
     ) -> Self {
         let mut grid = [[Tile { kind: TileType::Empty, offset_y: 0.0 }; GRID_HEIGHT]; GRID_WIDTH];
@@ -107,6 +132,14 @@ impl GameState {
         let mut game = GameState {
             grid,
             selected: None,
+            biome_sets,
+            garden_bg_texture,
+            pending_matches: vec![],
+            particles: vec![],
+            clear_timer: 0.0,
+            cascade_pulse: 0.0,
+            pulse_color: WHITE,
+            clear_was_cascade: false,
             total_points: 0,
             spent_points: 0,
             target: LEVEL_TARGET_STEP,
@@ -115,23 +148,17 @@ impl GameState {
             illegal_move_cost: ILLEGAL_MOVE_COST_START,
             inventory: Inventory::new(),
             shop: Shop::new(),
-            is_farming: false, // Start normally
-            beryl_texture,
-            moon_texture,
-            leaf_texture,
-            exotic_texture,
-            water_texture,
-            garden_bg_texture,
+            is_farming: false,
         };
 
-        // Clear any initial matches
+        // Clear any initial matches immediately so the opening board starts stable.
         loop {
-            let had_matches = game.resolve_matches();
-            if had_matches {
-                game.apply_gravity();
-            } else {
+            let matches = game.find_matches();
+            if matches.is_empty() {
                 break;
             }
+            game.clear_matches_immediately(matches);
+            game.apply_gravity();
         }
 
         game
@@ -271,39 +298,139 @@ impl GameState {
         (sw * 0.35, sh * 0.72, sw * 0.30, sh * 0.10)
     }
 
-    pub fn resolve_matches(&mut self) -> bool {
+    fn tile_particle_color(kind: TileType) -> Color {
+        match kind {
+            TileType::Sun => color_u8!(255, 215, 110, 255),
+            TileType::Moon => color_u8!(180, 205, 255, 255),
+            TileType::Water => color_u8!(90, 170, 255, 255),
+            TileType::Leaf => color_u8!(150, 235, 150, 255),
+            TileType::Exotic => color_u8!(230, 140, 255, 255),
+            TileType::Empty => WHITE,
+        }
+    }
+
+    fn is_clearing(&self) -> bool {
+        !self.pending_matches.is_empty()
+    }
+
+    fn pending_match_kind_at(&self, x: usize, y: usize) -> Option<TileType> {
+        self.pending_matches
+            .iter()
+            .find(|(mx, my, _)| *mx == x && *my == y)
+            .map(|(_, _, kind)| *kind)
+    }
+
+    fn find_matches(&self) -> Vec<(usize, usize, TileType)> {
         let mut to_remove = vec![];
-        // 1. Horizontal
+
         for y in 0..GRID_HEIGHT { for x in 0..GRID_WIDTH - 2 {
             let t1 = self.grid[x][y].kind; let t2 = self.grid[x+1][y].kind; let t3 = self.grid[x+2][y].kind;
-            if t1 != TileType::Empty && t1 == t2 && t2 == t3 { to_remove.push((x,y)); to_remove.push((x+1,y)); to_remove.push((x+2,y)); }
+            if t1 != TileType::Empty && t1 == t2 && t2 == t3 {
+                to_remove.push((x, y, t1));
+                to_remove.push((x + 1, y, t2));
+                to_remove.push((x + 2, y, t3));
+            }
         }}
-        // 2. Vertical
+
         for x in 0..GRID_WIDTH { for y in 0..GRID_HEIGHT - 2 {
             let t1 = self.grid[x][y].kind; let t2 = self.grid[x][y+1].kind; let t3 = self.grid[x][y+2].kind;
-            if t1 != TileType::Empty && t1 == t2 && t2 == t3 { to_remove.push((x,y)); to_remove.push((x,y+1)); to_remove.push((x,y+2)); }
+            if t1 != TileType::Empty && t1 == t2 && t2 == t3 {
+                to_remove.push((x, y, t1));
+                to_remove.push((x, y + 1, t2));
+                to_remove.push((x, y + 2, t3));
+            }
         }}
-        
-        to_remove.sort(); to_remove.dedup();
-        if to_remove.is_empty() { return false; }
 
-        let points = to_remove.len() as i32 * 10;
-        self.total_points += points;
+        to_remove.sort_by_key(|(x, y, _)| (*x, *y));
+        to_remove.dedup_by_key(|(x, y, _)| (*x, *y));
+        to_remove
+    }
 
-        // Snapshot matched kinds before clearing so drops reflect what was matched.
-        let matched_kinds: Vec<TileType> = to_remove
-            .iter()
-            .map(|(x, y)| self.grid[*x][*y].kind)
-            .collect();
-        
-        for (rx, ry) in to_remove { self.grid[rx][ry].kind = TileType::Empty; }
+    fn spawn_match_particles(&mut self, matches: &[(usize, usize, TileType)]) {
+        let layout = Layout::compute();
+        for (x, y, kind) in matches {
+            let center_x = layout.grid_offset_x + *x as f32 * layout.tile_size + layout.tile_size * 0.5;
+            let center_y = layout.grid_offset_y + *y as f32 * layout.tile_size + self.grid[*x][*y].offset_y + layout.tile_size * 0.5;
+            let color = Self::tile_particle_color(*kind);
+            for _ in 0..8 {
+                let life = gen_range(0.18, 0.35);
+                self.particles.push(GemParticle {
+                    x: center_x + gen_range(-8.0, 8.0),
+                    y: center_y + gen_range(-8.0, 8.0),
+                    vx: gen_range(-18.0, 18.0),
+                    vy: gen_range(-34.0, -10.0),
+                    life,
+                    max_life: life,
+                    size: gen_range(3.0, 7.0),
+                    color,
+                });
+            }
+        }
+    }
 
-        for kind in matched_kinds {
+    fn begin_match_clear(&mut self, matches: Vec<(usize, usize, TileType)>, is_cascade: bool) {
+        if matches.is_empty() {
+            return;
+        }
+
+        self.clear_timer = MATCH_CLEAR_DELAY;
+        self.clear_was_cascade = is_cascade;
+        self.pulse_color = Self::tile_particle_color(matches[0].2);
+        if matches.len() >= 4 || is_cascade {
+            self.cascade_pulse = 1.0;
+        }
+        self.spawn_match_particles(&matches);
+        self.pending_matches = matches;
+    }
+
+    fn clear_matches_immediately(&mut self, matches: Vec<(usize, usize, TileType)>) {
+        if matches.is_empty() {
+            return;
+        }
+
+        self.total_points += matches.len() as i32 * 10;
+        for (x, y, kind) in matches {
+            self.grid[x][y].kind = TileType::Empty;
+            self.roll_resource_drop(kind);
+        }
+    }
+
+    fn finalize_match_clear(&mut self) {
+        if self.pending_matches.is_empty() {
+            return;
+        }
+
+        let matches = std::mem::take(&mut self.pending_matches);
+        self.clear_timer = 0.0;
+        self.total_points += matches.len() as i32 * 10;
+
+        for (x, y, kind) in matches {
+            self.grid[x][y].kind = TileType::Empty;
             self.roll_resource_drop(kind);
         }
 
-        true
+        self.apply_gravity();
+
+        let next_matches = self.find_matches();
+        if !next_matches.is_empty() {
+            self.begin_match_clear(next_matches, true);
+        } else {
+            self.clear_was_cascade = false;
+        }
     }
+
+    fn update_match_effects(&mut self, delta: f32) {
+        for particle in &mut self.particles {
+            particle.life -= delta;
+            particle.x += particle.vx * delta;
+            particle.y += particle.vy * delta;
+            particle.vx *= 0.98;
+            particle.vy -= 4.0 * delta;
+        }
+        self.particles.retain(|particle| particle.life > 0.0);
+        self.cascade_pulse = (self.cascade_pulse - delta * 4.0).max(0.0);
+    }
+
     pub fn apply_gravity(&mut self) {
         for x in 0..GRID_WIDTH {
             // Step 1: Scan from BOTTOM to TOP (y=7 down to y=0)
@@ -353,141 +480,160 @@ impl GameState {
         }
     }
 
+    fn update_playing(&mut self) {
+        let delta = get_frame_time();
+        self.animate_tiles(delta);
+        self.update_match_effects(delta);
+        let layout = Layout::compute();
+
+        if self.is_clearing() {
+            self.clear_timer -= delta;
+            if self.clear_timer <= 0.0 {
+                self.finalize_match_clear();
+            }
+        } else if is_mouse_button_pressed(MouseButton::Left) {
+            let (mx, my) = mouse_position();
+            self.handle_playing_click(mx, my, &layout);
+        }
+
+        if self.phase == GamePhase::Playing
+            && !self.is_clearing()
+            && self.total_points >= self.target
+            && !self.is_farming
+        {
+            self.phase = GamePhase::LevelTransition;
+        }
+    }
+
+    fn handle_playing_click(&mut self, mx: f32, my: f32, layout: &Layout) {
+        let (garden_x, garden_y, garden_w, garden_h) = Self::playing_visit_garden_button_rect(layout);
+        if Self::point_in_rect(mx, my, garden_x, garden_y, garden_w, garden_h) {
+            self.phase = GamePhase::Garden;
+            return;
+        }
+
+        if self.is_farming {
+            let (btn_x, btn_y, btn_w, btn_h) = Self::playing_descend_button_rect(layout);
+            if Self::point_in_rect(mx, my, btn_x, btn_y, btn_w, btn_h) {
+                self.phase = GamePhase::LevelTransition;
+                return;
+            }
+        }
+
+        let gx = ((mx - layout.grid_offset_x) / layout.tile_size).floor() as isize;
+        let gy = ((my - layout.grid_offset_y) / layout.tile_size).floor() as isize;
+
+        if gx < 0 || gx >= GRID_WIDTH as isize || gy < 0 || gy >= GRID_HEIGHT as isize {
+            self.selected = None;
+            return;
+        }
+
+        self.handle_board_selection(gx as usize, gy as usize);
+    }
+
+    fn handle_board_selection(&mut self, gx: usize, gy: usize) {
+        match self.selected {
+            None => self.selected = Some((gx, gy)),
+            Some((sx, sy)) => {
+                let dx = (gx as isize - sx as isize).abs();
+                let dy = (gy as isize - sy as isize).abs();
+                if (dx == 1 && dy == 0) || (dx == 0 && dy == 1) {
+                    self.resolve_swap(sx, sy, gx, gy);
+                } else {
+                    self.selected = Some((gx, gy));
+                }
+            }
+        }
+    }
+
+    fn resolve_swap(&mut self, sx: usize, sy: usize, gx: usize, gy: usize) {
+        let temp = self.grid[sx][sy];
+        self.grid[sx][sy] = self.grid[gx][gy];
+        self.grid[gx][gy] = temp;
+
+        let matches = self.find_matches();
+        if matches.is_empty() {
+            // Intentionally keep the swap: illicit moves are a mechanic,
+            // so do not revert or deny non-matching swaps here.
+            self.charge_illegal_move();
+        } else {
+            self.begin_match_clear(matches, false);
+        }
+
+        self.selected = None;
+    }
+
+    fn update_level_transition(&mut self) {
+        if is_key_pressed(KeyCode::Enter) {
+            if self.level % LEVELS_PER_SET == 0 {
+                self.reset_illegal_move_cost();
+                self.phase = GamePhase::Shop;
+            } else {
+                self.level += 1;
+                self.target += LEVEL_TARGET_STEP;
+                self.phase = GamePhase::Playing;
+            }
+            self.is_farming = false;
+        }
+
+        if is_key_pressed(KeyCode::F) {
+            self.is_farming = true;
+            self.phase = GamePhase::Playing;
+        }
+    }
+
+    fn update_shop(&mut self) {
+        if is_key_pressed(KeyCode::Enter) {
+            self.level += 1;
+            self.target += LEVEL_TARGET_STEP;
+            self.reset_illegal_move_cost();
+            self.phase = GamePhase::Playing;
+        }
+
+        if is_key_pressed(KeyCode::Space) && self.get_leaves_wallet() >= 500 {
+            self.spent_points += 500;
+        }
+    }
+
+    fn update_garden(&mut self) {
+        if is_mouse_button_pressed(MouseButton::Left) {
+            let (mx, my) = mouse_position();
+            let (rx, ry, rw, rh) = Self::garden_return_button_rect();
+            let (hx, hy, hw, hh) = Self::garden_hunt_button_rect();
+
+            if Self::point_in_rect(mx, my, rx, ry, rw, rh) {
+                self.phase = GamePhase::Playing;
+            } else if Self::point_in_rect(mx, my, hx, hy, hw, hh) {
+                self.phase = GamePhase::Hunt;
+            }
+        }
+
+        if is_key_pressed(KeyCode::Escape) {
+            self.phase = GamePhase::Playing;
+        }
+    }
+
+    fn update_hunt(&mut self) {
+        if is_mouse_button_pressed(MouseButton::Left) {
+            let (mx, my) = mouse_position();
+            let (bx, by, bw, bh) = Self::hunt_return_button_rect();
+            if Self::point_in_rect(mx, my, bx, by, bw, bh) {
+                self.phase = GamePhase::Garden;
+            }
+        }
+
+        if is_key_pressed(KeyCode::Escape) {
+            self.phase = GamePhase::Garden;
+        }
+    }
+
     pub fn update(&mut self) {
         match self.phase {
-            GamePhase::Playing => {
-                // Animate tile offsets
-                self.animate_tiles(get_frame_time());
-                let layout = Layout::compute();
-
-                // 1. MOUSE LOGIC FOR GRID
-                if is_mouse_button_pressed(MouseButton::Left) {
-                    let (mx, my) = mouse_position();
-                    
-                    // CHECK IF CLICKING DESCEND BUTTON (Only if farming)
-                    let mut clicked_button = false;
-
-                    let (garden_x, garden_y, garden_w, garden_h) = Self::playing_visit_garden_button_rect(&layout);
-                    if Self::point_in_rect(mx, my, garden_x, garden_y, garden_w, garden_h) {
-                        self.phase = GamePhase::Garden;
-                        clicked_button = true;
-                    }
-
-                    if self.is_farming {
-                        let (btn_x, btn_y, btn_w, btn_h) = Self::playing_descend_button_rect(&layout);
-                        if !clicked_button && Self::point_in_rect(mx, my, btn_x, btn_y, btn_w, btn_h) {
-                                self.phase = GamePhase::LevelTransition;
-                                clicked_button = true;
-                        }
-                    }
-
-                    if !clicked_button {
-                        // GRID LOGIC
-                        let gx = ((mx - layout.grid_offset_x) / layout.tile_size).floor() as isize;
-                        let gy = ((my - layout.grid_offset_y) / layout.tile_size).floor() as isize;
-
-                        if gx >= 0 && gx < GRID_WIDTH as isize && gy >= 0 && gy < GRID_HEIGHT as isize {
-                            match self.selected {
-                                None => self.selected = Some((gx as usize, gy as usize)),
-                                Some((sx, sy)) => {
-                                    let gx = gx as usize; let gy = gy as usize;
-                                    let dx = (gx as isize - sx as isize).abs(); let dy = (gy as isize - sy as isize).abs();
-                                    if (dx == 1 && dy == 0) || (dx == 0 && dy == 1) {
-                                        let temp = self.grid[sx][sy]; self.grid[sx][sy] = self.grid[gx][gy]; self.grid[gx][gy] = temp;
-                                        let had_matches = self.resolve_matches();
-                                        if had_matches {
-                                            // Cascade: resolve matches and apply gravity until stable
-                                            self.apply_gravity();
-                                            loop {
-                                                let had_matches = self.resolve_matches();
-                                                if had_matches {
-                                                    self.apply_gravity();
-                                                } else {
-                                                    break;
-                                                }
-                                            }
-                                        } else {
-                                            self.charge_illegal_move();
-                                        }
-                                        self.selected = None;
-                                    } else { self.selected = Some((gx, gy)); }
-                                }
-                            }
-                        } else { self.selected = None; }
-                    }
-                }
-
-                // 2. CHECK LEVEL THRESHOLD
-                // If target met AND we aren't already farming, trigger transition
-                if self.phase == GamePhase::Playing && self.total_points >= self.target && !self.is_farming {
-                    self.phase = GamePhase::LevelTransition;
-                }
-            }
-            
-            GamePhase::LevelTransition => {
-                // OPTION A: Next Level
-                if is_key_pressed(KeyCode::Enter) {
-                    if self.level % LEVELS_PER_SET == 0 {
-                        self.reset_illegal_move_cost();
-                        self.phase = GamePhase::Shop; 
-                    } else { 
-                        self.level += 1;
-                        self.target += LEVEL_TARGET_STEP;
-                        self.phase = GamePhase::Playing; 
-                    }
-                    // Reset farming flag for the new level
-                    self.is_farming = false; 
-                }
-                
-                // OPTION B: Stay and Farm
-                if is_key_pressed(KeyCode::F) {
-                    self.is_farming = true;
-                    self.phase = GamePhase::Playing;
-                }
-            }
-
-            GamePhase::Shop => {
-                if is_key_pressed(KeyCode::Enter) {
-                    self.level += 1;
-                    self.target += LEVEL_TARGET_STEP;
-                    self.reset_illegal_move_cost();
-                    self.phase = GamePhase::Playing;
-                }
-                // Debug spending
-                if is_key_pressed(KeyCode::Space) && self.get_leaves_wallet() >= 500 {
-                    self.spent_points += 500;
-                }
-            }
-            GamePhase::Garden => {
-                if is_mouse_button_pressed(MouseButton::Left) {
-                    let (mx, my) = mouse_position();
-                    let (rx, ry, rw, rh) = Self::garden_return_button_rect();
-                    let (hx, hy, hw, hh) = Self::garden_hunt_button_rect();
-
-                    if Self::point_in_rect(mx, my, rx, ry, rw, rh) {
-                        self.phase = GamePhase::Playing;
-                    } else if Self::point_in_rect(mx, my, hx, hy, hw, hh) {
-                        self.phase = GamePhase::Hunt;
-                    }
-                }
-
-                if is_key_pressed(KeyCode::Escape) {
-                    self.phase = GamePhase::Playing;
-                }
-            }
-            GamePhase::Hunt => {
-                if is_mouse_button_pressed(MouseButton::Left) {
-                    let (mx, my) = mouse_position();
-                    let (bx, by, bw, bh) = Self::hunt_return_button_rect();
-                    if Self::point_in_rect(mx, my, bx, by, bw, bh) {
-                        self.phase = GamePhase::Garden;
-                    }
-                }
-
-                if is_key_pressed(KeyCode::Escape) {
-                    self.phase = GamePhase::Garden;
-                }
-            }
+            GamePhase::Playing => self.update_playing(),
+            GamePhase::LevelTransition => self.update_level_transition(),
+            GamePhase::Shop => self.update_shop(),
+            GamePhase::Garden => self.update_garden(),
+            GamePhase::Hunt => self.update_hunt(),
             GamePhase::BossHunt => {}
         }
     }
@@ -582,53 +728,95 @@ impl GameState {
         }
         let current_frame_13 = frame_index_13.floor() as f32;
         
+        // For 32-frame sprite (Leaf): ping-pong cycle
+        let total_frames_32 = 62.0; // 32 forward + 30 back = 62 total loop
+        let mut frame_index_32 = (time * speed) % total_frames_32;
+        if frame_index_32 > 31.0 {
+            frame_index_32 = 62.0 - frame_index_32;
+        }
+        let current_frame_32 = frame_index_32.floor() as f32;
+
         // For 41-frame sprite (Exotic): simple loop
         let total_frames_41 = 41.0;
         let frame_index_41 = (time * speed) % total_frames_41;
         let current_frame_41 = frame_index_41.floor() as f32;
 
-        // For 45-frame sprite (Water): simple loop
-        let total_frames_45 = 45.0;
-        let frame_index_45 = (time * speed) % total_frames_45;
-        let current_frame_45 = frame_index_45.floor() as f32;
+        // For 13-frame sprite (Water): ping-pong cycle
+        let total_frames_water_13 = 24.0; // 13 forward + 11 back = 24 total loop
+        let mut frame_index_water_13 = (time * speed) % total_frames_water_13;
+        if frame_index_water_13 > 12.0 {
+            frame_index_water_13 = 24.0 - frame_index_water_13;  // Reverse for second half
+        }
+        let current_frame_water_13 = frame_index_water_13.floor() as f32;
 
        // 1. DRAW GRID
+        let set_idx = ((self.level - 1) / LEVELS_PER_SET) as usize;
+        let gems = &self.biome_sets[set_idx.min(self.biome_sets.len() - 1)];
+        let clear_progress = if self.is_clearing() {
+            (1.0 - self.clear_timer / MATCH_CLEAR_DELAY).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
         for x in 0..GRID_WIDTH {
             for y in 0..GRID_HEIGHT {
                 let tile = &self.grid[x][y];
                 let draw_x = layout.grid_offset_x + x as f32 * layout.tile_size;
                 let draw_y = layout.grid_offset_y + y as f32 * layout.tile_size + tile.offset_y;
-                
-                // PART A: DRAW THE TILE (Beryl or Normal)
+                let matched = self.pending_match_kind_at(x, y).is_some();
+                let scale = if matched { 1.0 - 0.18 * clear_progress } else { 1.0 };
+                let alpha = if matched { 1.0 - clear_progress } else { 1.0 };
+                let flash = if matched && clear_progress < 0.18 {
+                    1.0 - clear_progress / 0.18
+                } else {
+                    0.0
+                };
+
+                if matched {
+                    let glow_color = Self::tile_particle_color(tile.kind);
+                    draw_circle(
+                        draw_x + layout.tile_size * 0.5,
+                        draw_y + layout.tile_size * 0.5,
+                        layout.tile_size * (0.28 + 0.18 * flash),
+                        Color::new(glow_color.r, glow_color.g, glow_color.b, 0.22 * flash),
+                    );
+                }
+
                 match tile.kind {
                     TileType::Sun => {
                         let sprite_size = 64.0;
+                        let scaled = layout.tile_size * scale;
+                        let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                        let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
                         draw_texture_ex(
-                            &self.beryl_texture,
-                            draw_x, 
-                            draw_y,
-                            WHITE,
+                            &gems.sun,
+                            scaled_x,
+                            scaled_y,
+                            Color::new(1.0, 1.0, 1.0, alpha),
                             DrawTextureParams {
-                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                dest_size: Some(vec2(scaled, scaled)),
                                 source: Some(Rect::new(
-                                    current_frame_13 * sprite_size as f32, 
-                                    0.0,                        
-                                    sprite_size as f32,                
-                                    sprite_size as f32                 
+                                    current_frame_13 * sprite_size as f32,
+                                    0.0,
+                                    sprite_size as f32,
+                                    sprite_size as f32
                                 )),
                                 ..Default::default()
                             },
                         );
-                    }, // <--- Comma here helps the compiler!
+                    },
                     TileType::Moon => {
                         let sprite_size = 64.0;
+                        let scaled = layout.tile_size * scale;
+                        let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                        let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
                         draw_texture_ex(
-                            &self.moon_texture,
-                            draw_x,
-                            draw_y,
-                            WHITE,
+                            &gems.moon,
+                            scaled_x,
+                            scaled_y,
+                            Color::new(1.0, 1.0, 1.0, alpha),
                             DrawTextureParams {
-                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                dest_size: Some(vec2(scaled, scaled)),
                                 source: Some(Rect::new(
                                     current_frame_13 * sprite_size as f32,
                                     0.0,
@@ -641,15 +829,20 @@ impl GameState {
                     },
                     TileType::Leaf => {
                         let sprite_size = 64.0;
+                        let leaf_w = layout.tile_size * 1.25;
+                        let scaled_w = leaf_w * scale;
+                        let scaled_h = layout.tile_size * scale;
+                        let leaf_x = draw_x - (leaf_w - layout.tile_size) * 0.5 + (leaf_w - scaled_w) * 0.5;
+                        let leaf_y = draw_y + (layout.tile_size - scaled_h) * 0.5;
                         draw_texture_ex(
-                            &self.leaf_texture,
-                            draw_x,
-                            draw_y,
-                            WHITE,
+                            &gems.leaf,
+                            leaf_x,
+                            leaf_y,
+                            Color::new(1.0, 1.0, 1.0, alpha),
                             DrawTextureParams {
-                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                dest_size: Some(vec2(scaled_w, scaled_h)),
                                 source: Some(Rect::new(
-                                    current_frame_13 * sprite_size as f32,
+                                    current_frame_32 * sprite_size as f32,
                                     0.0,
                                     sprite_size as f32,
                                     sprite_size as f32
@@ -660,13 +853,16 @@ impl GameState {
                     },
                     TileType::Exotic => {
                         let sprite_size = 64.0;
+                        let scaled = layout.tile_size * scale;
+                        let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                        let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
                         draw_texture_ex(
-                            &self.exotic_texture,
-                            draw_x,
-                            draw_y,
-                            WHITE,
+                            &gems.exotic,
+                            scaled_x,
+                            scaled_y,
+                            Color::new(1.0, 1.0, 1.0, alpha),
                             DrawTextureParams {
-                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                dest_size: Some(vec2(scaled, scaled)),
                                 source: Some(Rect::new(
                                     current_frame_41 * sprite_size as f32,
                                     0.0,
@@ -679,15 +875,18 @@ impl GameState {
                     },
                     TileType::Water => {
                         let sprite_size = 64.0;
+                        let scaled = layout.tile_size * scale;
+                        let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                        let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
                         draw_texture_ex(
-                            &self.water_texture,
-                            draw_x,
-                            draw_y,
-                            WHITE,
+                            &gems.water,
+                            scaled_x,
+                            scaled_y,
+                            Color::new(1.0, 1.0, 1.0, alpha),
                             DrawTextureParams {
-                                dest_size: Some(vec2(layout.tile_size, layout.tile_size)),
+                                dest_size: Some(vec2(scaled, scaled)),
                                 source: Some(Rect::new(
-                                    current_frame_45 * sprite_size as f32,
+                                    current_frame_water_13 * sprite_size as f32,
                                     0.0,
                                     sprite_size as f32,
                                     sprite_size as f32
@@ -696,21 +895,67 @@ impl GameState {
                             },
                         );
                     },
-                    
                     _ => {
-                        // Draw everything else normally
-                        draw_rectangle(draw_x, draw_y, layout.tile_size - 2.0, layout.tile_size - 2.0, tile.get_color(self.level));
-                    }
-                } // <--- END OF MATCH
-
-                // PART B: DRAW THE SELECTION (Outside the match so it works on ALL tiles)
-                if let Some((sx, sy)) = self.selected {
-                    if sx == x && sy == y { 
-                        draw_rectangle_lines(draw_x, draw_y, layout.tile_size - 2.0, layout.tile_size - 2.0, 4.0, WHITE); 
+                        let base = tile.get_color(self.level);
+                        draw_rectangle(
+                            draw_x,
+                            draw_y,
+                            layout.tile_size - 2.0,
+                            layout.tile_size - 2.0,
+                            Color::new(base.r, base.g, base.b, alpha),
+                        );
                     }
                 }
+
             }
         }
+
+        // Draw overlay after tiles so frame art stays visible even with opaque gem sprites.
+        if let Some(overlay) = &gems.overlay {
+            draw_texture_ex(
+                overlay,
+                0.0,
+                0.0,
+                Color::new(1.0, 1.0, 1.0, 0.85),
+                DrawTextureParams {
+                    dest_size: Some(vec2(screen_width(), screen_height())),
+                    ..Default::default()
+                },
+            );
+        }
+
+        // Keep selection feedback above the overlay.
+        if let Some((sx, sy)) = self.selected {
+            if self.pending_match_kind_at(sx, sy).is_none() {
+                let draw_x = layout.grid_offset_x + sx as f32 * layout.tile_size;
+                let draw_y = layout.grid_offset_y + sy as f32 * layout.tile_size + self.grid[sx][sy].offset_y;
+                draw_rectangle_lines(draw_x, draw_y, layout.tile_size - 2.0, layout.tile_size - 2.0, 4.0, WHITE);
+            }
+        }
+
+        if self.cascade_pulse > 0.0 {
+            let board_w = layout.tile_size * GRID_WIDTH as f32;
+            let board_h = layout.tile_size * GRID_HEIGHT as f32;
+            draw_rectangle(
+                layout.grid_offset_x,
+                layout.grid_offset_y,
+                board_w,
+                board_h,
+                Color::new(self.pulse_color.r, self.pulse_color.g, self.pulse_color.b, 0.08 * self.cascade_pulse),
+            );
+        }
+
+        for particle in &self.particles {
+            let life_ratio = (particle.life / particle.max_life).clamp(0.0, 1.0);
+            let size = particle.size * (0.55 + 0.45 * life_ratio);
+            draw_circle(
+                particle.x,
+                particle.y,
+                size,
+                Color::new(particle.color.r, particle.color.g, particle.color.b, 0.70 * life_ratio),
+            );
+        }
+
         // 2. DRAW UI
         match self.phase {
             GamePhase::Playing => {
