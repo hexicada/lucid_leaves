@@ -10,8 +10,8 @@ use game_state::{GameState, BiomeTextures};
 fn window_conf() -> Conf {
     Conf {
         window_title: "Lucid Leaves".to_owned(),
-        window_width: 800,
-        window_height: 580,
+        window_width: 1200,
+        window_height: 640,
         window_resizable: true,
         ..Default::default()
     }
@@ -115,12 +115,17 @@ async fn main() {
 
     let garden_bg_texture = load_texture("assets/gardenbgplots.png").await.unwrap();
     garden_bg_texture.set_filter(FilterMode::Nearest);
+    let leaves_main = load_texture("assets/leavesmain.png").await.unwrap();
+    leaves_main.set_filter(FilterMode::Nearest);
+    let leaves_aux = load_optional_texture("assets/forest_leaves_aux.png").await;
 
     // 2. PASS IT TO THE GAME
     let mut game = GameState::new(
         biome_sets,
         garden_bg_texture,
     );
+    game.leaves_main_texture = Some(leaves_main);
+    game.leaves_aux_texture = leaves_aux;
 
     loop {
         game.update();

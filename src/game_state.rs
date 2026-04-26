@@ -16,6 +16,16 @@ pub const DROP_RATE_MOON_ITEM: f32 = 0.10;
 pub const DROP_RATE_FERTILIZER: f32 = 0.15;
 pub const LEAF_DROP_BONUS: i32 = 30;
 pub const MATCH_CLEAR_DELAY: f32 = 0.12;
+// --- Leaf sway constants (Forest Floor biome) ---
+pub const LEAF_SWAY_SPEED: f32    = 0.55;  // Hz — primary oscillator
+pub const LEAF_SWAY_SPEED_2: f32  = 0.85;  // Hz — secondary oscillator
+pub const LEAF_SWAY_AMP_DEG: f32  = 1.2;   // max rotation in degrees
+pub const LEAF_SWAY_PIVOT_NX: f32 = 0.54;  // normalised x of branch pivot
+pub const LEAF_SWAY_PIVOT_NY: f32 = 0.37;  // normalised y of branch pivot
+pub const LEAF_AUX_SWAY_AMP_DEG: f32 = 0.8;
+pub const LEAF_AUX_SWAY_PHASE: f32 = 1.35;
+pub const LEAF_AUX_SWAY_PIVOT_NX: f32 = 0.18;
+pub const LEAF_AUX_SWAY_PIVOT_NY: f32 = 0.18;
 
 /// Computed each frame from screen dimensions so the layout adapts to any window size.
 pub struct Layout {
@@ -35,10 +45,15 @@ impl Layout {
         let ui_w     = (sw * 0.325).floor();
         let board_max_w = sw - h_margin * 2.0 - gap - ui_w;
         let board_max_h = sh * 0.96;
-        let tile_size = (board_max_w / GRID_WIDTH as f32)
+        let base_tile_size = (board_max_w / GRID_WIDTH as f32)
             .min(board_max_h / GRID_HEIGHT as f32)
-            .floor()
-            .max(16.0);
+            .floor();
+
+        // Narrow windows make the frame art crowd the board; gently reduce board scale
+        // at small widths, then blend back to full size on wider windows.
+        let width_blend = ((sw - 800.0) / 400.0).clamp(0.0, 1.0);
+        let board_scale_comp = 0.97 + 0.03 * width_blend;
+        let tile_size = (base_tile_size * board_scale_comp).floor().max(16.0);
         let board_w = tile_size * GRID_WIDTH as f32;
         let board_h = tile_size * GRID_HEIGHT as f32;
         let grid_offset_x = h_margin;
@@ -97,6 +112,8 @@ pub struct GameState {
     // Asset Storage
     pub biome_sets: Vec<BiomeTextures>,
     pub garden_bg_texture: Texture2D,
+    pub leaves_main_texture: Option<Texture2D>,
+    pub leaves_aux_texture: Option<Texture2D>,
 
     // Match juice state
     pub pending_matches: Vec<(usize, usize, TileType)>,
@@ -134,6 +151,8 @@ impl GameState {
             selected: None,
             biome_sets,
             garden_bg_texture,
+            leaves_main_texture: None,
+            leaves_aux_texture: None,
             pending_matches: vec![],
             particles: vec![],
             clear_timer: 0.0,
@@ -954,6 +973,65 @@ impl GameState {
                 size,
                 Color::new(particle.color.r, particle.color.g, particle.color.b, 0.70 * life_ratio),
             );
+        }
+
+        // --- Animated leaf overlay (Forest Floor only) ---
+        if set_idx == 0 {
+            if let Some(ref leaves_tex) = self.leaves_main_texture {
+                let sw = screen_width();
+                let sh = screen_height();
+                let t = get_time() as f32;
+                let tau = std::f32::consts::TAU;
+
+                let sway_deg =
+                    (t * LEAF_SWAY_SPEED * tau).sin() * LEAF_SWAY_AMP_DEG
+                    + (t * LEAF_SWAY_SPEED_2 * tau).sin() * LEAF_SWAY_AMP_DEG * 0.38;
+                let sway_rad = sway_deg * std::f32::consts::PI / 180.0;
+
+                let pivot_x = sw * LEAF_SWAY_PIVOT_NX;
+                let pivot_y = sh * LEAF_SWAY_PIVOT_NY;
+
+                draw_texture_ex(
+                    leaves_tex,
+                    0.0,
+                    0.0,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(sw, sh)),
+                        rotation: sway_rad,
+                        pivot: Some(vec2(pivot_x, pivot_y)),
+                        ..Default::default()
+                    },
+                );
+            }
+
+            if let Some(ref leaves_aux_tex) = self.leaves_aux_texture {
+                let sw = screen_width();
+                let sh = screen_height();
+                let t = get_time() as f32;
+                let tau = std::f32::consts::TAU;
+
+                let sway_deg =
+                    ((t * LEAF_SWAY_SPEED * tau) + LEAF_AUX_SWAY_PHASE).sin() * LEAF_AUX_SWAY_AMP_DEG
+                    + ((t * LEAF_SWAY_SPEED_2 * tau) + LEAF_AUX_SWAY_PHASE * 0.61).sin() * LEAF_AUX_SWAY_AMP_DEG * 0.42;
+                let sway_rad = sway_deg * std::f32::consts::PI / 180.0;
+
+                let pivot_x = sw * LEAF_AUX_SWAY_PIVOT_NX;
+                let pivot_y = sh * LEAF_AUX_SWAY_PIVOT_NY;
+
+                draw_texture_ex(
+                    leaves_aux_tex,
+                    0.0,
+                    0.0,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(sw, sh)),
+                        rotation: sway_rad,
+                        pivot: Some(vec2(pivot_x, pivot_y)),
+                        ..Default::default()
+                    },
+                );
+            }
         }
 
         // 2. DRAW UI
