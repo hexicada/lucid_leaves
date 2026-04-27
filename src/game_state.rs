@@ -27,6 +27,20 @@ pub const LEAF_AUX_SWAY_PHASE: f32 = 1.35;
 pub const LEAF_AUX_SWAY_PIVOT_NX: f32 = 0.18;
 pub const LEAF_AUX_SWAY_PIVOT_NY: f32 = 0.18;
 
+// --- Garden isometric grid positioning ---
+// Left lobe grid
+pub const ISO_TILE_HW: f32         = 48.0; // tile half-width in pixels
+pub const ISO_TILE_HH: f32         = 32.0; // tile half-height in pixels
+
+pub const ISO_LEFT_ORIGIN_NX: f32  = 0.28; // normalized screen x - left lobe top corner
+pub const ISO_LEFT_ORIGIN_NY: f32  = 0.38; // normalized screen y - left lobe top corner
+
+// Right lobe grid
+pub const ISO_RIGHT_ORIGIN_NX: f32 = 0.68; // normalized screen x - right lobe top corner
+pub const ISO_RIGHT_ORIGIN_NY: f32 = 0.38; // normalized screen y - right lobe top corner
+
+pub const ISO_DOT_RADIUS: f32      = 4.0;  // radius of positioning dots
+
 /// Computed each frame from screen dimensions so the layout adapts to any window size.
 pub struct Layout {
     pub tile_size: f32,
@@ -687,21 +701,18 @@ impl GameState {
                 },
             );
 
-            let zone_x = sw * 0.16;
-            let zone_y = sh * 0.25;
-            let zone_w = sw * 0.68;
-            let zone_h = sh * 0.48;
-            draw_rectangle_lines(zone_x, zone_y, zone_w, zone_h, 2.0, color_u8!(205, 240, 190, 180));
-
-            let cols = 3;
-            let rows = 3;
-            let cell_w = zone_w / cols as f32;
-            let cell_h = zone_h / rows as f32;
-            for row in 0..rows {
-                for col in 0..cols {
-                    let px = zone_x + col as f32 * cell_w;
-                    let py = zone_y + row as f32 * cell_h;
-                    draw_rectangle_lines(px, py, cell_w, cell_h, 1.0, color_u8!(190, 230, 175, 160));
+            // Isometric plot positioning dots
+            let origins = [
+                (sw * ISO_LEFT_ORIGIN_NX, sh * ISO_LEFT_ORIGIN_NY),
+                (sw * ISO_RIGHT_ORIGIN_NX, sh * ISO_RIGHT_ORIGIN_NY),
+            ];
+            for (origin_x, origin_y) in origins {
+                for gy in 0..5usize {
+                    for gx in 0..5usize {
+                        let sx = origin_x + (gx as f32 - gy as f32) * ISO_TILE_HW;
+                        let sy = origin_y + (gx as f32 + gy as f32) * ISO_TILE_HH;
+                        draw_circle(sx, sy, ISO_DOT_RADIUS, color_u8!(255, 20, 147, 240));
+                    }
                 }
             }
 
