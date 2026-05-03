@@ -5,6 +5,8 @@ mod game_state;
 mod inventory;
 mod garden;
 mod shop;
+mod ui_layout;
+mod economy;
 use game_state::{GameState, BiomeTextures};
 
 fn window_conf() -> Conf {
@@ -55,9 +57,9 @@ async fn main() {
     // Add new biomes here as you produce them; just increment the list.
     // Biome 1 — Deep Cave
     let b1_sun    = load_or_fallback("assets/biome1/sun_sheet.png",    "assets/beryl_sheet.png").await;
-    let b1_moon   = load_or_fallback("assets/biome1/moon_sheet.png",   "assets/moon_sheet.png").await;
+    let b1_moon   = load_or_fallback("assets/amethyst_sheet.png",      "assets/moon_sheet.png").await;
     let b1_leaf   = load_or_fallback("assets/biome1/leaf_sheet.png",   "assets/leaf_sheet.png").await;
-    let b1_exotic = load_or_fallback("assets/biome1/exotic_sheet.png", "assets/exotic_sheet.png").await;
+    let b1_exotic = load_or_fallback("assets/lamp_sheet.png",          "assets/exotic_sheet.png").await;
     let b1_water  = load_or_fallback("assets/biome1/water_sheet.png",  "assets/water_sheet.png").await;
 
     // Biome 2 — Volcanic Rift

@@ -3,6 +3,7 @@
 pub const GROWTH_STEP_SECS: i64 = 86_400; // 1 real-world day in seconds
 pub const GARDEN_PLOT_COUNT: usize = 9;   // 3x3 initial grid
 pub const TIME_SKIP_GRACE_SECS: i64 = 600; // 10 minutes — anti time-skip threshold
+pub const FERTILIZER_STEP_MULTIPLIER: f32 = 0.5; // next growth step is 50% duration
 
 // --- Plant Types ---
 
@@ -33,7 +34,7 @@ impl PlantStage {
             PlantStage::Seeded    => Some(PlantStage::Sprouting),
             PlantStage::Sprouting => Some(PlantStage::Grown),
             PlantStage::Grown     => Some(PlantStage::Blooming),
-            PlantStage::Blooming  => Some(PlantStage::Rare),
+            PlantStage::Blooming  => None,
             PlantStage::Rare      => None,
         }
     }
@@ -51,6 +52,7 @@ pub struct GardenPlot {
     pub stage: PlantStage,
     pub watered: bool,
     pub fertilized: bool,
+    pub moonbloom_infused: bool,
     pub planted_at_unix: i64,      // UTC unix seconds
     pub next_stage_at_unix: i64,   // UTC unix seconds — when this stage completes
 }
@@ -61,9 +63,48 @@ impl GardenPlot {
         stage: PlantStage::Empty,
         watered: false,
         fertilized: false,
+        moonbloom_infused: false,
         planted_at_unix: 0,
         next_stage_at_unix: 0,
     };
+
+    pub fn plant(&mut self, plant_type: PlantType, now_unix: i64) -> bool {
+        if self.stage != PlantStage::Empty {
+            return false;
+        }
+        self.plant_type = Some(plant_type);
+        self.stage = PlantStage::Seeded;
+        self.watered = false;
+        self.fertilized = false;
+        self.moonbloom_infused = false;
+        self.planted_at_unix = now_unix;
+        self.next_stage_at_unix = now_unix + GROWTH_STEP_SECS;
+        true
+    }
+
+    pub fn water(&mut self) -> bool {
+        if matches!(self.stage, PlantStage::Empty | PlantStage::Rare) {
+            return false;
+        }
+        self.watered = true;
+        true
+    }
+
+    pub fn fertilize(&mut self) -> bool {
+        if matches!(self.stage, PlantStage::Empty | PlantStage::Rare) {
+            return false;
+        }
+        self.fertilized = true;
+        true
+    }
+
+    pub fn infuse_moonbloom(&mut self) -> bool {
+        if self.stage != PlantStage::Grown {
+            return false;
+        }
+        self.moonbloom_infused = true;
+        true
+    }
 
     /// Advance stage if the timer has elapsed and conditions are met.
     /// `now_unix` must be UTC unix seconds from system clock.
@@ -76,11 +117,22 @@ impl GardenPlot {
             return false;
         }
         if now_unix >= self.next_stage_at_unix {
-            if let Some(next) = self.stage.next() {
+            let next = if self.stage == PlantStage::Grown && self.moonbloom_infused {
+                Some(PlantStage::Rare)
+            } else {
+                self.stage.next()
+            };
+
+            if let Some(next) = next {
                 self.stage = next;
                 self.watered = false;
+                let step_secs = if self.fertilized {
+                    ((GROWTH_STEP_SECS as f32) * FERTILIZER_STEP_MULTIPLIER).max(1.0) as i64
+                } else {
+                    GROWTH_STEP_SECS
+                };
                 self.fertilized = false;
-                self.next_stage_at_unix = now_unix + GROWTH_STEP_SECS;
+                self.next_stage_at_unix = now_unix + step_secs;
                 return true;
             }
         }
