@@ -9,6 +9,7 @@ mod ui_layout;
 mod economy;
 mod match_logic;
 mod render;
+mod phase_update;
 use game_state::{GameState, BiomeTextures};
 
 fn window_conf() -> Conf {

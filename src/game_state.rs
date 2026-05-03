@@ -10,9 +10,6 @@ use crate::ui_layout::{
     point_in_rect,
     playing_visit_garden_button_rect,
     playing_descend_button_rect,
-    garden_return_button_rect,
-    garden_hunt_button_rect,
-    hunt_return_button_rect,
 };
 
 pub const GRID_WIDTH: usize = 8;
@@ -376,70 +373,6 @@ impl GameState {
         }
 
         self.selected = None;
-    }
-
-    fn update_level_transition(&mut self) {
-        if is_key_pressed(KeyCode::Enter) {
-            if self.level % LEVELS_PER_SET == 0 {
-                self.reset_illegal_move_cost();
-                self.phase = GamePhase::Shop;
-            } else {
-                self.level += 1;
-                self.target += LEVEL_TARGET_STEP;
-                self.phase = GamePhase::Playing;
-            }
-            self.is_farming = false;
-        }
-
-        if is_key_pressed(KeyCode::F) {
-            self.is_farming = true;
-            self.phase = GamePhase::Playing;
-        }
-    }
-
-    fn update_shop(&mut self) {
-        if is_key_pressed(KeyCode::Enter) {
-            self.level += 1;
-            self.target += LEVEL_TARGET_STEP;
-            self.reset_illegal_move_cost();
-            self.phase = GamePhase::Playing;
-        }
-
-        if is_key_pressed(KeyCode::Space) && self.get_leaves_wallet() >= 500 {
-            self.spent_points += 500;
-        }
-    }
-
-    fn update_garden(&mut self) {
-        if is_mouse_button_pressed(MouseButton::Left) {
-            let (mx, my) = mouse_position();
-            let (rx, ry, rw, rh) = garden_return_button_rect();
-            let (hx, hy, hw, hh) = garden_hunt_button_rect();
-
-            if point_in_rect(mx, my, rx, ry, rw, rh) {
-                self.phase = GamePhase::Playing;
-            } else if point_in_rect(mx, my, hx, hy, hw, hh) {
-                self.phase = GamePhase::Hunt;
-            }
-        }
-
-        if is_key_pressed(KeyCode::Escape) {
-            self.phase = GamePhase::Playing;
-        }
-    }
-
-    fn update_hunt(&mut self) {
-        if is_mouse_button_pressed(MouseButton::Left) {
-            let (mx, my) = mouse_position();
-            let (bx, by, bw, bh) = hunt_return_button_rect();
-            if point_in_rect(mx, my, bx, by, bw, bh) {
-                self.phase = GamePhase::Garden;
-            }
-        }
-
-        if is_key_pressed(KeyCode::Escape) {
-            self.phase = GamePhase::Garden;
-        }
     }
 
     pub fn update(&mut self) {
