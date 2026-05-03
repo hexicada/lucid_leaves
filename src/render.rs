@@ -1,7 +1,25 @@
 use macroquad::prelude::*;
 
 use crate::economy;
+use crate::game_state::{
+    GameState,
+    GRID_HEIGHT,
+    GRID_WIDTH,
+    LEAF_AUX_SWAY_AMP_DEG,
+    LEAF_AUX_SWAY_PHASE,
+    LEAF_AUX_SWAY_PIVOT_NX,
+    LEAF_AUX_SWAY_PIVOT_NY,
+    LEAF_SWAY_AMP_DEG,
+    LEAF_SWAY_PIVOT_NX,
+    LEAF_SWAY_PIVOT_NY,
+    LEAF_SWAY_SPEED,
+    LEAF_SWAY_SPEED_2,
+    LEVELS_PER_SET,
+    MATCH_CLEAR_DELAY,
+};
 use crate::inventory::{Inventory, ItemType};
+use crate::match_logic;
+use crate::tile::TileType;
 use crate::ui_layout::{
     garden_hunt_button_rect,
     garden_return_button_rect,
@@ -136,6 +154,326 @@ pub fn draw_hunt_screen() {
         (bh * 0.42).max(20.0),
         WHITE,
     );
+}
+
+pub fn draw_board_and_effects(state: &GameState, layout: &Layout) {
+    // --- ANIMATION MATH (Global Time) ---
+    let time = get_time() as f32;
+    let speed = 13.0_f32; // 13 frames per second
+
+    // Generic ping-pong helper for spritesheets with N horizontal frames.
+    let ping_pong_frame = |frames: u32| -> f32 {
+        if frames <= 1 {
+            return 0.0;
+        }
+        let max = (frames - 1) as f32;
+        let cycle = max * 2.0;
+        let mut idx = (time * speed) % cycle;
+        if idx > max {
+            idx = cycle - idx;
+        }
+        idx.floor()
+    };
+
+    // For 13-frame sprites (Sun, Moon, Leaf): ping-pong cycle
+    let current_frame_13 = ping_pong_frame(13);
+
+    // For 32-frame sprite (Leaf): ping-pong cycle
+    let total_frames_32 = 62.0; // 32 forward + 30 back = 62 total loop
+    let mut frame_index_32 = (time * speed) % total_frames_32;
+    if frame_index_32 > 31.0 {
+        frame_index_32 = 62.0 - frame_index_32;
+    }
+    let current_frame_32 = frame_index_32.floor() as f32;
+
+    // For 41-frame sprite (Exotic): simple loop
+    let total_frames_41 = 41.0;
+    let frame_index_41 = (time * speed) % total_frames_41;
+    let current_frame_41 = frame_index_41.floor() as f32;
+
+    // For 13-frame sprite (Water): ping-pong cycle
+    let current_frame_water_13 = ping_pong_frame(13);
+
+    // 1. DRAW GRID
+    let set_idx = ((state.level - 1) / LEVELS_PER_SET) as usize;
+    let is_cave_biome = set_idx == 1;
+    let gems = &state.biome_sets[set_idx.min(state.biome_sets.len() - 1)];
+    let clear_progress = if !state.pending_matches.is_empty() {
+        (1.0 - state.clear_timer / MATCH_CLEAR_DELAY).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    for x in 0..GRID_WIDTH {
+        for y in 0..GRID_HEIGHT {
+            let tile = &state.grid[x][y];
+            let draw_x = layout.grid_offset_x + x as f32 * layout.tile_size;
+            let draw_y = layout.grid_offset_y + y as f32 * layout.tile_size + tile.offset_y;
+            let matched = match_logic::pending_match_kind_at(&state.pending_matches, x, y).is_some();
+            let scale = if matched { 1.0 - 0.18 * clear_progress } else { 1.0 };
+            let alpha = if matched { 1.0 - clear_progress } else { 1.0 };
+            let flash = if matched && clear_progress < 0.18 {
+                1.0 - clear_progress / 0.18
+            } else {
+                0.0
+            };
+
+            if matched {
+                let glow_color = match_logic::tile_particle_color(tile.kind);
+                draw_circle(
+                    draw_x + layout.tile_size * 0.5,
+                    draw_y + layout.tile_size * 0.5,
+                    layout.tile_size * (0.28 + 0.18 * flash),
+                    Color::new(glow_color.r, glow_color.g, glow_color.b, 0.22 * flash),
+                );
+            }
+
+            match tile.kind {
+                TileType::Sun => {
+                    let sprite_size = 64.0;
+                    let scaled = layout.tile_size * scale;
+                    let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                    let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
+                    draw_texture_ex(
+                        &gems.sun,
+                        scaled_x,
+                        scaled_y,
+                        Color::new(1.0, 1.0, 1.0, alpha),
+                        DrawTextureParams {
+                            dest_size: Some(vec2(scaled, scaled)),
+                            source: Some(Rect::new(
+                                current_frame_13 * sprite_size as f32,
+                                0.0,
+                                sprite_size as f32,
+                                sprite_size as f32,
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                }
+                TileType::Moon => {
+                    let sprite_size = 64.0;
+                    let moon_frame = if is_cave_biome {
+                        ping_pong_frame(16)
+                    } else {
+                        current_frame_13
+                    };
+                    let scaled = layout.tile_size * scale;
+                    let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                    let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
+                    draw_texture_ex(
+                        &gems.moon,
+                        scaled_x,
+                        scaled_y,
+                        Color::new(1.0, 1.0, 1.0, alpha),
+                        DrawTextureParams {
+                            dest_size: Some(vec2(scaled, scaled)),
+                            source: Some(Rect::new(
+                                moon_frame * sprite_size as f32,
+                                0.0,
+                                sprite_size as f32,
+                                sprite_size as f32,
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                }
+                TileType::Leaf => {
+                    let sprite_size = 64.0;
+                    let leaf_w = layout.tile_size * 1.25;
+                    let scaled_w = leaf_w * scale;
+                    let scaled_h = layout.tile_size * scale;
+                    let leaf_x = draw_x - (leaf_w - layout.tile_size) * 0.5 + (leaf_w - scaled_w) * 0.5;
+                    let leaf_y = draw_y + (layout.tile_size - scaled_h) * 0.5;
+                    draw_texture_ex(
+                        &gems.leaf,
+                        leaf_x,
+                        leaf_y,
+                        Color::new(1.0, 1.0, 1.0, alpha),
+                        DrawTextureParams {
+                            dest_size: Some(vec2(scaled_w, scaled_h)),
+                            source: Some(Rect::new(
+                                current_frame_32 * sprite_size as f32,
+                                0.0,
+                                sprite_size as f32,
+                                sprite_size as f32,
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                }
+                TileType::Exotic => {
+                    let sprite_size = 64.0;
+                    let exotic_frame = if is_cave_biome {
+                        ping_pong_frame(29)
+                    } else {
+                        current_frame_41
+                    };
+                    let scaled = layout.tile_size * scale;
+                    let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                    let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
+                    draw_texture_ex(
+                        &gems.exotic,
+                        scaled_x,
+                        scaled_y,
+                        Color::new(1.0, 1.0, 1.0, alpha),
+                        DrawTextureParams {
+                            dest_size: Some(vec2(scaled, scaled)),
+                            source: Some(Rect::new(
+                                exotic_frame * sprite_size as f32,
+                                0.0,
+                                sprite_size as f32,
+                                sprite_size as f32,
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                }
+                TileType::Water => {
+                    let sprite_size = 64.0;
+                    let scaled = layout.tile_size * scale;
+                    let scaled_x = draw_x + (layout.tile_size - scaled) * 0.5;
+                    let scaled_y = draw_y + (layout.tile_size - scaled) * 0.5;
+                    draw_texture_ex(
+                        &gems.water,
+                        scaled_x,
+                        scaled_y,
+                        Color::new(1.0, 1.0, 1.0, alpha),
+                        DrawTextureParams {
+                            dest_size: Some(vec2(scaled, scaled)),
+                            source: Some(Rect::new(
+                                current_frame_water_13 * sprite_size as f32,
+                                0.0,
+                                sprite_size as f32,
+                                sprite_size as f32,
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                }
+                _ => {
+                    let base = tile.get_color(state.level);
+                    draw_rectangle(
+                        draw_x,
+                        draw_y,
+                        layout.tile_size - 2.0,
+                        layout.tile_size - 2.0,
+                        Color::new(base.r, base.g, base.b, alpha),
+                    );
+                }
+            }
+        }
+    }
+
+    // Draw overlay after tiles so frame art stays visible even with opaque gem sprites.
+    if let Some(overlay) = &gems.overlay {
+        draw_texture_ex(
+            overlay,
+            0.0,
+            0.0,
+            Color::new(1.0, 1.0, 1.0, 0.85),
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
+    }
+
+    // Keep selection feedback above the overlay.
+    if let Some((sx, sy)) = state.selected {
+        if match_logic::pending_match_kind_at(&state.pending_matches, sx, sy).is_none() {
+            let draw_x = layout.grid_offset_x + sx as f32 * layout.tile_size;
+            let draw_y = layout.grid_offset_y + sy as f32 * layout.tile_size + state.grid[sx][sy].offset_y;
+            draw_rectangle_lines(draw_x, draw_y, layout.tile_size - 2.0, layout.tile_size - 2.0, 4.0, WHITE);
+        }
+    }
+
+    if state.cascade_pulse > 0.0 {
+        let board_w = layout.tile_size * GRID_WIDTH as f32;
+        let board_h = layout.tile_size * GRID_HEIGHT as f32;
+        draw_rectangle(
+            layout.grid_offset_x,
+            layout.grid_offset_y,
+            board_w,
+            board_h,
+            Color::new(
+                state.pulse_color.r,
+                state.pulse_color.g,
+                state.pulse_color.b,
+                0.08 * state.cascade_pulse,
+            ),
+        );
+    }
+
+    for particle in &state.particles {
+        let life_ratio = (particle.life / particle.max_life).clamp(0.0, 1.0);
+        let size = particle.size * (0.55 + 0.45 * life_ratio);
+        draw_circle(
+            particle.x,
+            particle.y,
+            size,
+            Color::new(particle.color.r, particle.color.g, particle.color.b, 0.70 * life_ratio),
+        );
+    }
+
+    // --- Animated leaf overlay (Forest Floor only) ---
+    if set_idx == 0 {
+        if let Some(ref leaves_tex) = state.leaves_main_texture {
+            let sw = screen_width();
+            let sh = screen_height();
+            let t = get_time() as f32;
+            let tau = std::f32::consts::TAU;
+
+            let sway_deg = (t * LEAF_SWAY_SPEED * tau).sin() * LEAF_SWAY_AMP_DEG
+                + (t * LEAF_SWAY_SPEED_2 * tau).sin() * LEAF_SWAY_AMP_DEG * 0.38;
+            let sway_rad = sway_deg * std::f32::consts::PI / 180.0;
+
+            let pivot_x = sw * LEAF_SWAY_PIVOT_NX;
+            let pivot_y = sh * LEAF_SWAY_PIVOT_NY;
+
+            draw_texture_ex(
+                leaves_tex,
+                0.0,
+                0.0,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(sw, sh)),
+                    rotation: sway_rad,
+                    pivot: Some(vec2(pivot_x, pivot_y)),
+                    ..Default::default()
+                },
+            );
+        }
+
+        if let Some(ref leaves_aux_tex) = state.leaves_aux_texture {
+            let sw = screen_width();
+            let sh = screen_height();
+            let t = get_time() as f32;
+            let tau = std::f32::consts::TAU;
+
+            let sway_deg = ((t * LEAF_SWAY_SPEED * tau) + LEAF_AUX_SWAY_PHASE).sin() * LEAF_AUX_SWAY_AMP_DEG
+                + ((t * LEAF_SWAY_SPEED_2 * tau) + LEAF_AUX_SWAY_PHASE * 0.61).sin()
+                    * LEAF_AUX_SWAY_AMP_DEG
+                    * 0.42;
+            let sway_rad = sway_deg * std::f32::consts::PI / 180.0;
+
+            let pivot_x = sw * LEAF_AUX_SWAY_PIVOT_NX;
+            let pivot_y = sh * LEAF_AUX_SWAY_PIVOT_NY;
+
+            draw_texture_ex(
+                leaves_aux_tex,
+                0.0,
+                0.0,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(sw, sh)),
+                    rotation: sway_rad,
+                    pivot: Some(vec2(pivot_x, pivot_y)),
+                    ..Default::default()
+                },
+            );
+        }
+    }
 }
 
 pub fn draw_playing_ui(
