@@ -7,6 +7,8 @@ mod garden;
 mod shop;
 mod ui_layout;
 mod economy;
+mod match_logic;
+mod render;
 use game_state::{GameState, BiomeTextures};
 
 fn window_conf() -> Conf {

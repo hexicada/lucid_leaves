@@ -1,8 +1,9 @@
 use macroquad::prelude::*;
-use macroquad::rand::gen_range;
 use crate::economy;
+use crate::match_logic::{self, GemParticle, MatchCell};
+use crate::render;
 use crate::tile::*; // Import our neighbor, the Tile
-use crate::inventory::{Inventory, ItemType};
+use crate::inventory::Inventory;
 use crate::shop::Shop;
 use crate::ui_layout::{
     Layout,
@@ -70,18 +71,6 @@ pub struct BiomeTextures {
     pub overlay: Option<Texture2D>, // Optional board overlay (scaled to board bounds)
 }
 
-#[derive(Clone, Copy)]
-pub struct GemParticle {
-    pub x: f32,
-    pub y: f32,
-    pub vx: f32,
-    pub vy: f32,
-    pub life: f32,
-    pub max_life: f32,
-    pub size: f32,
-    pub color: Color,
-}
-
 pub struct GameState {
     pub grid: [[Tile; GRID_HEIGHT]; GRID_WIDTH],
     pub selected: Option<(usize, usize)>,
@@ -93,7 +82,7 @@ pub struct GameState {
     pub leaves_aux_texture: Option<Texture2D>,
 
     // Match juice state
-    pub pending_matches: Vec<(usize, usize, TileType)>,
+    pub pending_matches: Vec<MatchCell>,
     pub particles: Vec<GemParticle>,
     pub clear_timer: f32,
     pub cascade_pulse: f32,
@@ -175,84 +164,31 @@ impl GameState {
         self.illegal_move_cost = ILLEGAL_MOVE_COST_START;
     }
 
-    fn tile_particle_color(kind: TileType) -> Color {
-        match kind {
-            TileType::Sun => color_u8!(255, 215, 110, 255),
-            TileType::Moon => color_u8!(180, 205, 255, 255),
-            TileType::Water => color_u8!(90, 170, 255, 255),
-            TileType::Leaf => color_u8!(150, 235, 150, 255),
-            TileType::Exotic => color_u8!(230, 140, 255, 255),
-            TileType::Empty => WHITE,
-        }
-    }
-
     fn is_clearing(&self) -> bool {
         !self.pending_matches.is_empty()
     }
 
     fn pending_match_kind_at(&self, x: usize, y: usize) -> Option<TileType> {
-        self.pending_matches
-            .iter()
-            .find(|(mx, my, _)| *mx == x && *my == y)
-            .map(|(_, _, kind)| *kind)
+        match_logic::pending_match_kind_at(&self.pending_matches, x, y)
     }
 
-    fn find_matches(&self) -> Vec<(usize, usize, TileType)> {
-        let mut to_remove = vec![];
-
-        for y in 0..GRID_HEIGHT { for x in 0..GRID_WIDTH - 2 {
-            let t1 = self.grid[x][y].kind; let t2 = self.grid[x+1][y].kind; let t3 = self.grid[x+2][y].kind;
-            if t1 != TileType::Empty && t1 == t2 && t2 == t3 {
-                to_remove.push((x, y, t1));
-                to_remove.push((x + 1, y, t2));
-                to_remove.push((x + 2, y, t3));
-            }
-        }}
-
-        for x in 0..GRID_WIDTH { for y in 0..GRID_HEIGHT - 2 {
-            let t1 = self.grid[x][y].kind; let t2 = self.grid[x][y+1].kind; let t3 = self.grid[x][y+2].kind;
-            if t1 != TileType::Empty && t1 == t2 && t2 == t3 {
-                to_remove.push((x, y, t1));
-                to_remove.push((x, y + 1, t2));
-                to_remove.push((x, y + 2, t3));
-            }
-        }}
-
-        to_remove.sort_by_key(|(x, y, _)| (*x, *y));
-        to_remove.dedup_by_key(|(x, y, _)| (*x, *y));
-        to_remove
+    fn find_matches(&self) -> Vec<MatchCell> {
+        match_logic::find_matches(&self.grid)
     }
 
-    fn spawn_match_particles(&mut self, matches: &[(usize, usize, TileType)]) {
+    fn spawn_match_particles(&mut self, matches: &[MatchCell]) {
         let layout = Layout::compute(GRID_WIDTH, GRID_HEIGHT);
-        for (x, y, kind) in matches {
-            let center_x = layout.grid_offset_x + *x as f32 * layout.tile_size + layout.tile_size * 0.5;
-            let center_y = layout.grid_offset_y + *y as f32 * layout.tile_size + self.grid[*x][*y].offset_y + layout.tile_size * 0.5;
-            let color = Self::tile_particle_color(*kind);
-            for _ in 0..8 {
-                let life = gen_range(0.18, 0.35);
-                self.particles.push(GemParticle {
-                    x: center_x + gen_range(-8.0, 8.0),
-                    y: center_y + gen_range(-8.0, 8.0),
-                    vx: gen_range(-18.0, 18.0),
-                    vy: gen_range(-34.0, -10.0),
-                    life,
-                    max_life: life,
-                    size: gen_range(3.0, 7.0),
-                    color,
-                });
-            }
-        }
+        match_logic::spawn_match_particles(&self.grid, &mut self.particles, matches, &layout);
     }
 
-    fn begin_match_clear(&mut self, matches: Vec<(usize, usize, TileType)>, is_cascade: bool) {
+    fn begin_match_clear(&mut self, matches: Vec<MatchCell>, is_cascade: bool) {
         if matches.is_empty() {
             return;
         }
 
         self.clear_timer = MATCH_CLEAR_DELAY;
         self.clear_was_cascade = is_cascade;
-        self.pulse_color = Self::tile_particle_color(matches[0].2);
+        self.pulse_color = match_logic::tile_particle_color(matches[0].2);
         if matches.len() >= 4 || is_cascade {
             self.cascade_pulse = 1.0;
         }
@@ -260,7 +196,7 @@ impl GameState {
         self.pending_matches = matches;
     }
 
-    fn clear_matches_immediately(&mut self, matches: Vec<(usize, usize, TileType)>) {
+    fn clear_matches_immediately(&mut self, matches: Vec<MatchCell>) {
         if matches.is_empty() {
             return;
         }
@@ -307,15 +243,7 @@ impl GameState {
     }
 
     fn update_match_effects(&mut self, delta: f32) {
-        for particle in &mut self.particles {
-            particle.life -= delta;
-            particle.x += particle.vx * delta;
-            particle.y += particle.vy * delta;
-            particle.vx *= 0.98;
-            particle.vy -= 4.0 * delta;
-        }
-        self.particles.retain(|particle| particle.life > 0.0);
-        self.cascade_pulse = (self.cascade_pulse - delta * 4.0).max(0.0);
+        match_logic::update_match_effects(&mut self.particles, &mut self.cascade_pulse, delta);
     }
 
     pub fn apply_gravity(&mut self) {
@@ -530,73 +458,29 @@ impl GameState {
         let set_index = (self.level - 1) / LEVELS_PER_SET;
         let bg_color = match set_index { 0 => BLACK, 1 => BLACK, _ => color_u8!(30, 0, 0, 255) };
         clear_background(bg_color);
-    let layout = Layout::compute(GRID_WIDTH, GRID_HEIGHT);
+        let layout = Layout::compute(GRID_WIDTH, GRID_HEIGHT);
 
         if self.phase == GamePhase::Shop {
-            let sw = screen_width();
-            let sh = screen_height();
-            draw_text("THE SHRINE",                              sw * 0.25, sh * 0.17, (sh * 0.103).max(40.0), PURPLE);
-            draw_text(&format!("Leaves: {}", self.get_leaves_wallet()), sw * 0.31, sh * 0.34, (sh * 0.069).max(28.0), GOLD);
-            draw_text("[SPACE] Spend 500 | [ENTER] Next Biome", sw * 0.19, sh * 0.69, (sh * 0.052).max(22.0), WHITE);
+            render::draw_shop_screen(self.get_leaves_wallet());
             return;
         }
 
         if self.phase == GamePhase::Garden {
-            let sw = screen_width();
-            let sh = screen_height();
-            draw_texture_ex(
+            render::draw_garden_screen(
                 &self.garden_bg_texture,
-                0.0,
-                0.0,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(vec2(sw, sh)),
-                    ..Default::default()
-                },
+                ISO_LEFT_ORIGIN_NX,
+                ISO_LEFT_ORIGIN_NY,
+                ISO_RIGHT_ORIGIN_NX,
+                ISO_RIGHT_ORIGIN_NY,
+                ISO_TILE_HW,
+                ISO_TILE_HH,
+                ISO_DOT_RADIUS,
             );
-
-            // Isometric plot positioning dots
-            let origins = [
-                (sw * ISO_LEFT_ORIGIN_NX, sh * ISO_LEFT_ORIGIN_NY),
-                (sw * ISO_RIGHT_ORIGIN_NX, sh * ISO_RIGHT_ORIGIN_NY),
-            ];
-            for (origin_x, origin_y) in origins {
-                for gy in 0..5usize {
-                    for gx in 0..5usize {
-                        let sx = origin_x + (gx as f32 - gy as f32) * ISO_TILE_HW;
-                        let sy = origin_y + (gx as f32 + gy as f32) * ISO_TILE_HH;
-                        draw_circle(sx, sy, ISO_DOT_RADIUS, color_u8!(255, 20, 147, 240));
-                    }
-                }
-            }
-
-            draw_rectangle(0.0, 0.0, sw, sh * 0.12, color_u8!(14, 28, 14, 175));
-            draw_text("THE GARDEN", sw * 0.03, sh * 0.08, (sh * 0.07).max(30.0), color_u8!(220, 245, 185, 255));
-            draw_text("Rest phase: tend plots and manage resources", sw * 0.34, sh * 0.08, (sh * 0.035).max(18.0), WHITE);
-
-            let (rx, ry, rw, rh) = garden_return_button_rect();
-            draw_rectangle(rx, ry, rw, rh, color_u8!(52, 80, 58, 255));
-            draw_rectangle_lines(rx, ry, rw, rh, 3.0, color_u8!(170, 225, 170, 255));
-            draw_text("RETURN TO PUZZLE", rx + rw * 0.08, ry + rh * 0.62, (rh * 0.42).max(20.0), WHITE);
-
-            let (hx, hy, hw, hh) = garden_hunt_button_rect();
-            draw_rectangle(hx, hy, hw, hh, color_u8!(78, 65, 36, 255));
-            draw_rectangle_lines(hx, hy, hw, hh, 3.0, color_u8!(240, 200, 120, 255));
-            draw_text("GO HUNT", hx + hw * 0.29, hy + hh * 0.62, (hh * 0.48).max(20.0), WHITE);
             return;
         }
 
         if self.phase == GamePhase::Hunt {
-            let sw = screen_width();
-            let sh = screen_height();
-            clear_background(color_u8!(48, 24, 26, 255));
-            draw_text("HUNT (PLACEHOLDER)", sw * 0.19, sh * 0.20, (sh * 0.095).max(34.0), color_u8!(255, 210, 180, 255));
-            draw_text("Wizard mice mini-game implementation is next sprint", sw * 0.13, sh * 0.34, (sh * 0.045).max(20.0), WHITE);
-
-            let (bx, by, bw, bh) = hunt_return_button_rect();
-            draw_rectangle(bx, by, bw, bh, color_u8!(85, 45, 44, 255));
-            draw_rectangle_lines(bx, by, bw, bh, 3.0, color_u8!(255, 190, 170, 255));
-            draw_text("BACK TO GARDEN", bx + bw * 0.11, by + bh * 0.62, (bh * 0.42).max(20.0), WHITE);
+            render::draw_hunt_screen();
             return;
         }
 
@@ -662,7 +546,7 @@ impl GameState {
                 };
 
                 if matched {
-                    let glow_color = Self::tile_particle_color(tile.kind);
+                    let glow_color = match_logic::tile_particle_color(tile.kind);
                     draw_circle(
                         draw_x + layout.tile_size * 0.5,
                         draw_y + layout.tile_size * 0.5,
@@ -917,77 +801,20 @@ impl GameState {
         // 2. DRAW UI
         match self.phase {
             GamePhase::Playing => {
-                // PROGRESS BAR (aligned with board top)
-                let bar_x    = layout.ui_panel_x;
-                let bar_y    = layout.grid_offset_y;
-                let bar_width = layout.ui_panel_width * 0.92;
-                let row_h    = layout.tile_size * 0.5;
-                let prev_threshold = self.target - LEVEL_TARGET_STEP;
-                let level_progress = (self.total_points - prev_threshold) as f32 / LEVEL_TARGET_STEP as f32;
-
-                draw_rectangle(bar_x, bar_y, bar_width, row_h * 0.27, GRAY);
-                draw_rectangle(bar_x, bar_y, bar_width * level_progress.clamp(0.0, 1.0), row_h * 0.27, GOLD);
-
-                let font_lg = (row_h * 1.05).max(18.0);
-                let font_sm = (row_h * 0.88).max(15.0);
-                draw_text(&format!("Level {}", self.level),                          bar_x, bar_y + row_h * 1.0, font_lg, WHITE);
-                draw_text(&format!("Leaves: {}", self.get_leaves_wallet()),          bar_x, bar_y + row_h * 2.1, font_lg, GOLD);
-                draw_text(&format!("Illicit Move Cost: {}", self.illegal_move_cost), bar_x, bar_y + row_h * 3.1, font_sm, ORANGE);
-
-                let inv_title_y = bar_y + row_h * 4.25;
-                draw_text(
-                    &format!("Inventory {}/8", economy::inventory_used_slots(&self.inventory)),
-                    bar_x,
-                    inv_title_y,
-                    font_sm,
-                    WHITE,
+                render::draw_playing_ui(
+                    &layout,
+                    self.level,
+                    self.target,
+                    LEVEL_TARGET_STEP,
+                    self.total_points,
+                    self.get_leaves_wallet(),
+                    self.illegal_move_cost,
+                    &self.inventory,
+                    self.is_farming,
                 );
-
-                let chip_h = (row_h * 0.9).max(20.0);
-                let chip_w = layout.ui_panel_width * 0.17;
-                let chip_gap = layout.ui_panel_width * 0.018;
-                let chip_y = inv_title_y + row_h * 0.28;
-                let chip_font = (font_sm * 0.78).max(12.0);
-                let inventory_chips = [
-                    ("CAN", economy::inventory_count(&self.inventory, ItemType::WateringCan), color_u8!(55, 125, 210, 255)),
-                    ("SUN", economy::inventory_count(&self.inventory, ItemType::SeedDay), color_u8!(210, 165, 35, 255)),
-                    ("MON", economy::inventory_count(&self.inventory, ItemType::SeedNight), color_u8!(100, 125, 220, 255)),
-                    ("ESS", economy::inventory_count(&self.inventory, ItemType::MoonbloomEssence), color_u8!(160, 90, 220, 255)),
-                    ("FERT", economy::inventory_count(&self.inventory, ItemType::Fertilizer), color_u8!(185, 55, 55, 255)),
-                ];
-
-                for (index, (label, count, color)) in inventory_chips.iter().enumerate() {
-                    let x = bar_x + index as f32 * (chip_w + chip_gap);
-                    draw_rectangle(x, chip_y, chip_w, chip_h, *color);
-                    draw_rectangle_lines(x, chip_y, chip_w, chip_h, 2.0, WHITE);
-                    draw_text(
-                        &format!("{}:{}", label, count),
-                        x + chip_w * 0.08,
-                        chip_y + chip_h * 0.72,
-                        chip_font,
-                        WHITE,
-                    );
-                }
-
-                // FARMING BUTTON
-                let (visit_x, visit_y, visit_w, visit_h) = playing_visit_garden_button_rect(&layout);
-                draw_rectangle(visit_x, visit_y, visit_w, visit_h, color_u8!(36, 80, 42, 255));
-                draw_rectangle_lines(visit_x, visit_y, visit_w, visit_h, 3.0, color_u8!(152, 230, 160, 255));
-                draw_text("VISIT GARDEN", visit_x + visit_w * 0.13, visit_y + visit_h * 0.68, font_lg, WHITE);
-
-                if self.is_farming {
-                    let (btn_x, btn_y, btn_w, btn_h) = playing_descend_button_rect(&layout);
-                    draw_rectangle(btn_x, btn_y, btn_w, btn_h, DARKGREEN);
-                    draw_rectangle_lines(btn_x, btn_y, btn_w, btn_h, 3.0, GREEN);
-                    draw_text("DESCEND >", btn_x + btn_w * 0.1, btn_y + btn_h * 0.68, font_lg, WHITE);
-                }
             },
             GamePhase::LevelTransition => {
-                let sw = screen_width();
-                let sh = screen_height();
-                draw_text("FOG CLEARED",                  sw * 0.19, sh * 0.43, (sh * 0.103).max(36.0), GREEN);
-                draw_text("[ENTER] Descend (Next Level)", sw * 0.15, sh * 0.55, (sh * 0.052).max(22.0), WHITE);
-                draw_text("[F] Farm (Stay & Collect)",    sw * 0.15, sh * 0.62, (sh * 0.052).max(22.0), GOLD);
+                render::draw_level_transition_ui();
             },
             _ => {}
         }
