@@ -44,6 +44,12 @@ impl GameState {
     }
 
     pub(crate) fn update_garden(&mut self) {
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        self.garden.tick_all(now_unix);
+
         if is_key_pressed(KeyCode::Escape) {
             if self.garden_selected_tool.is_some() {
                 self.garden_selected_tool = None;
@@ -92,11 +98,6 @@ impl GameState {
             // If tool is active, try clicking a plot
             if let Some(tool) = self.garden_selected_tool {
                 if let Some(plot_idx) = self.point_to_plot_index(mx, my) {
-                    let now_unix = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-                    
                     self.apply_garden_tool(tool, plot_idx, now_unix);
                     self.garden_selected_tool = None;
                 }

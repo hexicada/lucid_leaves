@@ -388,6 +388,7 @@ impl GameState {
                 ISO_TILE_HW,
                 ISO_TILE_HH,
                 ISO_DOT_RADIUS,
+                &self.garden,
                 &self.inventory,
                 self.garden_selected_tool,
                 self.garden_drawer_open,

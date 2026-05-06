@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use crate::economy;
+use crate::garden::{Garden, PlantStage, PlantType};
 use crate::game_state::{
     GameState,
     GardenTool,
@@ -50,6 +51,228 @@ pub fn draw_shop_screen(leaves_wallet: i32) {
     );
 }
 
+fn draw_inventory_slot(
+    x: f32,
+    y: f32,
+    size: f32,
+    label: &str,
+    count: u32,
+    color: Color,
+    font_size: f32,
+    is_active: bool,
+    is_enabled: bool,
+) {
+    let slot_color = if is_active {
+        color
+    } else if !is_enabled {
+        color_u8!(80, 80, 80, 200)
+    } else {
+        color
+    };
+
+    draw_rectangle(x, y, size, size, slot_color);
+    let border_color = if is_active { YELLOW } else { WHITE };
+    let border_width = if is_active { 4.0 } else { 2.0 };
+    draw_rectangle_lines(x, y, size, size, border_width, border_color);
+
+    draw_rectangle(
+        x + size * 0.18,
+        y + size * 0.18,
+        size * 0.64,
+        size * 0.50,
+        color_u8!(32, 38, 32, 160),
+    );
+
+    draw_text(
+        label,
+        x + size * 0.08,
+        y + size * 0.92,
+        font_size,
+        if is_enabled {
+            WHITE
+        } else {
+            color_u8!(150, 150, 150, 255)
+        },
+    );
+
+    let badge_w = size * 0.28;
+    let badge_h = size * 0.28;
+    let badge_x = x + size - badge_w - size * 0.05;
+    let badge_y = y + size * 0.05;
+    draw_rectangle(badge_x, badge_y, badge_w, badge_h, color_u8!(18, 24, 18, 235));
+    draw_rectangle_lines(
+        badge_x,
+        badge_y,
+        badge_w,
+        badge_h,
+        1.5,
+        color_u8!(220, 235, 210, 255),
+    );
+    draw_text(
+        &format!("{}", count),
+        badge_x + badge_w * 0.24,
+        badge_y + badge_h * 0.74,
+        (font_size * 0.95).max(10.0),
+        color_u8!(230, 245, 220, 255),
+    );
+}
+
+fn draw_garden_plot_state(
+    origin_x: f32,
+    origin_y: f32,
+    iso_tile_hw: f32,
+    iso_tile_hh: f32,
+    garden: &Garden,
+    selected_tool: Option<GardenTool>,
+) {
+    let (mx, my) = mouse_position();
+    let seed_tool_active = matches!(selected_tool, Some(GardenTool::PlantSun | GardenTool::PlantMoon));
+
+    let draw_sprout_placeholder = |x: f32,
+                                   y: f32,
+                                   stage: PlantStage,
+                                   plant_type: Option<PlantType>,
+                                   plant_color: Color| {
+        let stem_h = match stage {
+            PlantStage::Seeded => 6.0,
+            PlantStage::Sprouting => 10.0,
+            PlantStage::Grown => 14.0,
+            PlantStage::Blooming => 18.0,
+            PlantStage::Rare => 20.0,
+            PlantStage::Empty => 0.0,
+        };
+
+        let stem_w = if matches!(stage, PlantStage::Blooming | PlantStage::Rare) { 3.0 } else { 2.0 };
+        let base_y = y + 8.0;
+        let tip_y = base_y - stem_h;
+
+        // Stem and root nub
+        draw_line(x, base_y, x, tip_y, stem_w, color_u8!(64, 128, 66, 255));
+        draw_circle(x, base_y + 1.0, 2.5, color_u8!(76, 54, 34, 230));
+
+        match plant_type {
+            Some(PlantType::DayBloom) => {
+                // Rounder, fuller leaves for sun plants.
+                let leaf_r = if matches!(stage, PlantStage::Seeded) { 2.5 } else { 4.0 };
+                draw_circle(x - 4.0, tip_y + 3.0, leaf_r, plant_color);
+                draw_circle(x + 4.0, tip_y + 3.0, leaf_r, plant_color);
+
+                if matches!(stage, PlantStage::Grown | PlantStage::Blooming | PlantStage::Rare) {
+                    draw_circle(x - 6.0, tip_y + 7.0, 3.0, plant_color);
+                    draw_circle(x + 6.0, tip_y + 7.0, 3.0, plant_color);
+                }
+            }
+            Some(PlantType::NightBloom) => {
+                // Sharper crescent-like leaves for moon plants.
+                draw_triangle(
+                    vec2(x - 1.0, tip_y + 1.5),
+                    vec2(x - 8.0, tip_y + 6.0),
+                    vec2(x - 4.0, tip_y + 9.0),
+                    plant_color,
+                );
+                draw_triangle(
+                    vec2(x + 1.0, tip_y + 1.5),
+                    vec2(x + 8.0, tip_y + 6.0),
+                    vec2(x + 4.0, tip_y + 9.0),
+                    plant_color,
+                );
+
+                if matches!(stage, PlantStage::Grown | PlantStage::Blooming | PlantStage::Rare) {
+                    draw_triangle(
+                        vec2(x - 1.0, tip_y + 5.0),
+                        vec2(x - 9.0, tip_y + 10.5),
+                        vec2(x - 5.0, tip_y + 13.0),
+                        plant_color,
+                    );
+                    draw_triangle(
+                        vec2(x + 1.0, tip_y + 5.0),
+                        vec2(x + 9.0, tip_y + 10.5),
+                        vec2(x + 5.0, tip_y + 13.0),
+                        plant_color,
+                    );
+                }
+            }
+            None => {
+                let leaf_r = if matches!(stage, PlantStage::Seeded) { 2.5 } else { 4.0 };
+                draw_circle(x - 4.0, tip_y + 3.0, leaf_r, plant_color);
+                draw_circle(x + 4.0, tip_y + 3.0, leaf_r, plant_color);
+            }
+        }
+
+        if matches!(stage, PlantStage::Blooming | PlantStage::Rare) {
+            let bloom_color = if stage == PlantStage::Rare {
+                color_u8!(188, 116, 230, 255)
+            } else if plant_type == Some(PlantType::NightBloom) {
+                color_u8!(190, 214, 255, 255)
+            } else {
+                color_u8!(244, 214, 114, 255)
+            };
+            if plant_type == Some(PlantType::NightBloom) {
+                draw_circle(x, tip_y - 1.5, 4.5, bloom_color);
+                draw_circle(x + 2.0, tip_y - 1.5, 4.5, Color::new(0.0, 0.0, 0.0, 0.0));
+                draw_circle(x - 0.5, tip_y - 1.5, 1.5, color_u8!(255, 245, 224, 255));
+            } else {
+                draw_circle(x, tip_y - 2.0, 4.5, bloom_color);
+                draw_circle(x, tip_y - 2.0, 2.0, color_u8!(255, 245, 224, 255));
+            }
+        }
+    };
+
+    for (plot_index, (gx, gy)) in [
+        (0usize, 0usize), (1, 0), (2, 0),
+        (0, 1), (1, 1), (2, 1),
+        (0, 2), (1, 2), (2, 2),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let sx = origin_x + (*gx as f32 - *gy as f32) * iso_tile_hw;
+        let sy = origin_y + (*gx as f32 + *gy as f32) * iso_tile_hh;
+        let plot = &garden.plots[plot_index];
+        let dx = mx - sx;
+        let dy = my - sy;
+        let hovered = dx * dx + dy * dy <= 18.0 * 18.0;
+
+        if plot.stage != PlantStage::Empty {
+            let plant_color = match plot.plant_type {
+                Some(PlantType::DayBloom) => color_u8!(214, 181, 74, 255),
+                Some(PlantType::NightBloom) => color_u8!(105, 136, 224, 255),
+                None => color_u8!(170, 190, 170, 255),
+            };
+
+            draw_circle(sx, sy + 9.0, 11.0, Color::new(0.08, 0.12, 0.08, 0.58));
+            draw_sprout_placeholder(sx, sy, plot.stage, plot.plant_type, plant_color);
+
+            let stage_ring = match plot.stage {
+                PlantStage::Seeded => 8.0,
+                PlantStage::Sprouting => 10.0,
+                PlantStage::Grown => 12.0,
+                PlantStage::Blooming => 14.0,
+                PlantStage::Rare => 15.0,
+                PlantStage::Empty => 0.0,
+            };
+
+            if plot.watered {
+                draw_circle_lines(sx, sy + 1.0, stage_ring + 3.0, 2.0, color_u8!(80, 170, 235, 220));
+            }
+            if plot.fertilized {
+                draw_circle_lines(sx, sy + 1.0, stage_ring + 6.0, 2.0, color_u8!(146, 96, 44, 220));
+            }
+            if hovered {
+                draw_circle_lines(sx, sy + 1.0, stage_ring + 8.0, 2.0, WHITE);
+            }
+        } else if seed_tool_active {
+            let hint_color = match selected_tool {
+                Some(GardenTool::PlantSun) => color_u8!(214, 181, 74, 180),
+                Some(GardenTool::PlantMoon) => color_u8!(105, 136, 224, 180),
+                _ => color_u8!(220, 220, 220, 120),
+            };
+            let line_width = if hovered { 3.0 } else { 2.0 };
+            draw_circle_lines(sx, sy, 13.0, line_width, hint_color);
+        }
+    }
+}
+
 pub fn draw_garden_screen(
     garden_bg_texture: &Texture2D,
     iso_left_origin_nx: f32,
@@ -59,6 +282,7 @@ pub fn draw_garden_screen(
     iso_tile_hw: f32,
     iso_tile_hh: f32,
     iso_dot_radius: f32,
+    garden: &Garden,
     inventory: &Inventory,
     selected_tool: Option<GardenTool>,
     drawer_open: bool,
@@ -89,6 +313,15 @@ pub fn draw_garden_screen(
             }
         }
     }
+
+    draw_garden_plot_state(
+        sw * iso_left_origin_nx,
+        sh * iso_left_origin_ny,
+        iso_tile_hw,
+        iso_tile_hh,
+        garden,
+        selected_tool,
+    );
 
     draw_rectangle(0.0, 0.0, sw, sh * 0.12, color_u8!(14, 28, 14, 175));
     draw_text(
@@ -190,51 +423,21 @@ fn draw_garden_drawer(
     for (idx, (label, tool, count, color)) in buttons.iter().enumerate() {
         let btn_x = start_x + idx as f32 * (btn_size + spacing);
         let is_active = selected_tool == Some(*tool);
-        let btn_color = if is_active {
-            Color::new(color.r as f32 / 255.0, color.g as f32 / 255.0, color.b as f32 / 255.0, 1.0)
-        } else if *count == 0 {
-            color_u8!(80, 80, 80, 200)
+        let slot_color = if is_active {
+            Color::new(color.r, color.g, color.b, 1.0)
         } else {
             *color
         };
-
-        // Base slot tile (placeholder for future item art)
-        draw_rectangle(btn_x, btn_start_y, btn_size, btn_size, btn_color);
-        let border_color = if is_active { YELLOW } else { WHITE };
-        let border_width = if is_active { 4.0 } else { 2.0 };
-        draw_rectangle_lines(btn_x, btn_start_y, btn_size, btn_size, border_width, border_color);
-
-        // Tiny neutral inset to suggest art frame area
-        draw_rectangle(
-            btn_x + btn_size * 0.18,
-            btn_start_y + btn_size * 0.18,
-            btn_size * 0.64,
-            btn_size * 0.50,
-            color_u8!(32, 38, 32, 160),
-        );
-
-        // Keep tiny code marker for now; easy to remove once icons are in.
-        draw_text(
+        draw_inventory_slot(
+            btn_x,
+            btn_start_y,
+            btn_size,
             label,
-            btn_x + btn_size * 0.08,
-            btn_start_y + btn_size * 0.92,
+            *count,
+            slot_color,
             (font_sm * 0.85).max(10.0),
-            if *count == 0 { color_u8!(150, 150, 150, 255) } else { WHITE },
-        );
-
-        // Count badge in top-right corner
-        let badge_w = btn_size * 0.28;
-        let badge_h = btn_size * 0.28;
-        let badge_x = btn_x + btn_size - badge_w - btn_size * 0.05;
-        let badge_y = btn_start_y + btn_size * 0.05;
-        draw_rectangle(badge_x, badge_y, badge_w, badge_h, color_u8!(18, 24, 18, 235));
-        draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.5, color_u8!(220, 235, 210, 255));
-        draw_text(
-            &format!("{}", count),
-            badge_x + badge_w * 0.24,
-            badge_y + badge_h * 0.74,
-            (font_sm * 0.95).max(10.0),
-            color_u8!(230, 245, 220, 255),
+            is_active,
+            *count > 0,
         );
     }
 
@@ -680,38 +883,7 @@ pub fn draw_playing_ui(
 
     for (index, (label, count, color)) in inventory_chips.iter().enumerate() {
         let x = bar_x + index as f32 * (slot_size + slot_gap);
-        draw_rectangle(x, slot_y, slot_size, slot_size, *color);
-        draw_rectangle_lines(x, slot_y, slot_size, slot_size, 2.0, WHITE);
-
-        draw_rectangle(
-            x + slot_size * 0.18,
-            slot_y + slot_size * 0.18,
-            slot_size * 0.64,
-            slot_size * 0.50,
-            color_u8!(32, 38, 32, 160),
-        );
-
-        draw_text(
-            label,
-            x + slot_size * 0.08,
-            slot_y + slot_size * 0.92,
-            chip_font,
-            WHITE,
-        );
-
-        let badge_w = slot_size * 0.28;
-        let badge_h = slot_size * 0.28;
-        let badge_x = x + slot_size - badge_w - slot_size * 0.05;
-        let badge_y = slot_y + slot_size * 0.05;
-        draw_rectangle(badge_x, badge_y, badge_w, badge_h, color_u8!(18, 24, 18, 235));
-        draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.5, color_u8!(220, 235, 210, 255));
-        draw_text(
-            &format!("{}", count),
-            badge_x + badge_w * 0.24,
-            badge_y + badge_h * 0.74,
-            (chip_font * 0.95).max(10.0),
-            color_u8!(230, 245, 220, 255),
-        );
+        draw_inventory_slot(x, slot_y, slot_size, label, *count, *color, chip_font, false, true);
     }
 
     let (visit_x, visit_y, visit_w, visit_h) = playing_visit_garden_button_rect(layout);
