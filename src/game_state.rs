@@ -5,6 +5,7 @@ use crate::render;
 use crate::tile::*; // Import our neighbor, the Tile
 use crate::inventory::Inventory;
 use crate::shop::Shop;
+use crate::garden::Garden;
 use crate::ui_layout::{
     Layout,
 };
@@ -41,6 +42,15 @@ pub const ISO_RIGHT_ORIGIN_NY: f32 = 0.38; // normalized screen y - right lobe t
 pub const ISO_DOT_RADIUS: f32      = 4.0;  // radius of positioning dots
 pub const ILLEGAL_MOVE_COST_START: i32 = 100;
 pub const ILLEGAL_MOVE_COST_STEP: i32 = 100;
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum GardenTool {
+    PlantSun,
+    PlantMoon,
+    PlantEssence,
+    Water,
+    Fertilize,
+}
 
 #[allow(dead_code)]
 #[derive(PartialEq)]
@@ -93,6 +103,11 @@ pub struct GameState {
     pub illegal_move_cost: i32,
     pub inventory: Inventory,
     pub shop: Shop,
+    pub garden: Garden,
+    
+    // Garden UI tool mode
+    pub garden_selected_tool: Option<GardenTool>,
+    pub garden_drawer_open: bool,
     
     // NEW FLAG: Are we in "Overtime"?
     pub is_farming: bool,
@@ -128,6 +143,9 @@ impl GameState {
             illegal_move_cost: ILLEGAL_MOVE_COST_START,
             inventory: Inventory::new(),
             shop: Shop::new(),
+            garden: Garden::new(),
+            garden_selected_tool: None,
+            garden_drawer_open: false,
             is_farming: false,
         };
 
@@ -236,6 +254,58 @@ impl GameState {
         match_logic::update_match_effects(&mut self.particles, &mut self.cascade_pulse, delta);
     }
 
+    #[cfg(feature = "dev")]
+    pub(crate) fn save_progress(&self) {
+        let data = format!("{}\n{}\n{}\n{}\n",
+            self.level,
+            self.total_points,
+            self.spent_points,
+            self.illegal_move_cost,
+        );
+        let _ = std::fs::write("dev_save.txt", data);
+    }
+
+    #[cfg(feature = "dev")]
+    pub(crate) fn load_progress(&mut self) {
+        if let Ok(data) = std::fs::read_to_string("dev_save.txt") {
+            let mut lines = data.lines();
+            if let (Some(l), Some(tp), Some(sp), Some(ic)) = (
+                lines.next().and_then(|s| s.parse::<i32>().ok()),
+                lines.next().and_then(|s| s.parse::<i32>().ok()),
+                lines.next().and_then(|s| s.parse::<i32>().ok()),
+                lines.next().and_then(|s| s.parse::<i32>().ok()),
+            ) {
+                self.level         = l;
+                self.target        = l * LEVEL_TARGET_STEP;
+                self.total_points  = tp;
+                self.spent_points  = sp;
+                self.illegal_move_cost = ic;
+                self.is_farming    = false;
+                self.phase         = GamePhase::Playing;
+                self.reset_board();
+            }
+        }
+    }
+
+    #[cfg_attr(not(feature = "dev"), allow(dead_code))]
+    pub(crate) fn reset_board(&mut self) {
+        for x in 0..GRID_WIDTH {
+            for y in 0..GRID_HEIGHT {
+                self.grid[x][y] = crate::tile::Tile::new_random();
+            }
+        }
+        loop {
+            let matches = self.find_matches();
+            if matches.is_empty() { break; }
+            self.clear_matches_immediately(matches);
+            self.apply_gravity();
+        }
+        self.pending_matches = vec![];
+        self.particles = vec![];
+        self.clear_timer = 0.0;
+        self.selected = None;
+    }
+
     pub fn apply_gravity(&mut self) {
         for x in 0..GRID_WIDTH {
             // Step 1: Scan from BOTTOM to TOP (y=7 down to y=0)
@@ -318,6 +388,9 @@ impl GameState {
                 ISO_TILE_HW,
                 ISO_TILE_HH,
                 ISO_DOT_RADIUS,
+                &self.inventory,
+                self.garden_selected_tool,
+                self.garden_drawer_open,
             );
             return;
         }

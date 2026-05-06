@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+#[cfg(feature = "dev")]
+use crate::game_state::{LEVELS_PER_SET, LEVEL_TARGET_STEP};
 use crate::game_state::{GamePhase, GameState, GRID_HEIGHT, GRID_WIDTH};
 use crate::ui_layout::{
     point_in_rect,
@@ -31,6 +33,30 @@ impl GameState {
             && !self.is_farming
         {
             self.phase = GamePhase::LevelTransition;
+        }
+
+        #[cfg(feature = "dev")]
+        if is_key_pressed(KeyCode::B) {
+            let current_biome = (self.level - 1) / LEVELS_PER_SET;
+            let next_level = (current_biome + 1) * LEVELS_PER_SET + 1;
+            self.level = next_level;
+            self.target = next_level * LEVEL_TARGET_STEP;
+            self.total_points = self.target - 1;
+            self.spent_points = 0;
+            self.reset_illegal_move_cost();
+            self.is_farming = false;
+            self.phase = GamePhase::Playing;
+            self.reset_board();
+        }
+
+        #[cfg(feature = "dev")]
+        if is_key_pressed(KeyCode::F5) {
+            self.save_progress();
+        }
+
+        #[cfg(feature = "dev")]
+        if is_key_pressed(KeyCode::F9) {
+            self.load_progress();
         }
     }
 

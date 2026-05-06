@@ -68,13 +68,13 @@ pub fn playing_descend_button_rect(layout: &Layout) -> (f32, f32, f32, f32) {
 pub fn garden_return_button_rect() -> (f32, f32, f32, f32) {
     let sw = screen_width();
     let sh = screen_height();
-    (sw * 0.14, sh * 0.72, sw * 0.30, sh * 0.10)
+    (sw * 0.65, sh * 0.02, sw * 0.15, sh * 0.06)
 }
 
 pub fn garden_hunt_button_rect() -> (f32, f32, f32, f32) {
     let sw = screen_width();
     let sh = screen_height();
-    (sw * 0.56, sh * 0.72, sw * 0.30, sh * 0.10)
+    (sw * 0.82, sh * 0.02, sw * 0.15, sh * 0.06)
 }
 
 pub fn hunt_return_button_rect() -> (f32, f32, f32, f32) {

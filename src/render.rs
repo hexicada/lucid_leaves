@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 use crate::economy;
 use crate::game_state::{
     GameState,
+    GardenTool,
     GRID_HEIGHT,
     GRID_WIDTH,
     LEAF_AUX_SWAY_AMP_DEG,
@@ -58,6 +59,9 @@ pub fn draw_garden_screen(
     iso_tile_hw: f32,
     iso_tile_hh: f32,
     iso_dot_radius: f32,
+    inventory: &Inventory,
+    selected_tool: Option<GardenTool>,
+    drawer_open: bool,
 ) {
     let sw = screen_width();
     let sh = screen_height();
@@ -81,7 +85,7 @@ pub fn draw_garden_screen(
             for gx in 0..5usize {
                 let sx = origin_x + (gx as f32 - gy as f32) * iso_tile_hw;
                 let sy = origin_y + (gx as f32 + gy as f32) * iso_tile_hh;
-                draw_circle(sx, sy, iso_dot_radius, color_u8!(255, 20, 147, 240));
+                draw_circle(sx, sy, iso_dot_radius, color_u8!(116, 78, 40, 240));
             }
         }
     }
@@ -96,7 +100,7 @@ pub fn draw_garden_screen(
     );
     draw_text(
         "Rest phase: tend plots and manage resources",
-        sw * 0.34,
+        sw * 0.25,
         sh * 0.08,
         (sh * 0.035).max(18.0),
         WHITE,
@@ -123,6 +127,118 @@ pub fn draw_garden_screen(
         (hh * 0.48).max(20.0),
         WHITE,
     );
+
+    // Draw inventory drawer at bottom
+    draw_garden_drawer(sw, sh, inventory, selected_tool, drawer_open);
+}
+
+fn draw_garden_drawer(
+    sw: f32,
+    sh: f32,
+    inventory: &Inventory,
+    selected_tool: Option<GardenTool>,
+    drawer_open: bool,
+) {
+    let drawer_y = sh * 0.84;
+    let drawer_h = sh * 0.16;
+    let drawer_bg = color_u8!(40, 50, 40, 220);
+    let drawer_border = color_u8!(120, 180, 120, 255);
+
+    let tab_w = sw * 0.18;
+    let tab_h = sh * 0.05;
+    let tab_x = (sw - tab_w) * 0.5;
+    let tab_y = if drawer_open { drawer_y - tab_h * 0.8 } else { sh * 0.95 - tab_h };
+
+    if drawer_open {
+        // Draw drawer background
+        draw_rectangle(0.0, drawer_y, sw, drawer_h, drawer_bg);
+        draw_rectangle_lines(0.0, drawer_y, sw, drawer_h, 3.0, drawer_border);
+    }
+
+    draw_rectangle(tab_x, tab_y, tab_w, tab_h, color_u8!(54, 74, 54, 240));
+    draw_rectangle_lines(tab_x, tab_y, tab_w, tab_h, 2.0, drawer_border);
+    draw_text(
+        if drawer_open { "INVENTORY v" } else { "INVENTORY ^" },
+        tab_x + tab_w * 0.13,
+        tab_y + tab_h * 0.68,
+        (tab_h * 0.55).max(14.0),
+        color_u8!(220, 245, 185, 255),
+    );
+
+    if !drawer_open {
+        return;
+    }
+
+    let font_sm = (drawer_h * 0.18).max(11.0);
+
+    // Tool buttons
+    let btn_size = (drawer_h * 0.52).min(sw * 0.09);
+    let btn_start_y = drawer_y + drawer_h * 0.24;
+    let spacing = sw * 0.012;
+
+    let buttons = [
+        ("CAN", GardenTool::Water, economy::inventory_count(inventory, ItemType::WateringCan), color_u8!(55, 125, 210, 255)),
+        ("SUN", GardenTool::PlantSun, economy::inventory_count(inventory, ItemType::SeedDay), color_u8!(210, 165, 35, 255)),
+        ("MON", GardenTool::PlantMoon, economy::inventory_count(inventory, ItemType::SeedNight), color_u8!(100, 125, 220, 255)),
+        ("ESS", GardenTool::PlantEssence, economy::inventory_count(inventory, ItemType::MoonbloomEssence), color_u8!(160, 90, 220, 255)),
+        ("FERT", GardenTool::Fertilize, economy::inventory_count(inventory, ItemType::Fertilizer), color_u8!(185, 55, 55, 255)),
+    ];
+
+    let total_w = buttons.len() as f32 * btn_size + (buttons.len() as f32 - 1.0) * spacing;
+    let start_x = (sw - total_w) * 0.5;
+
+    for (idx, (label, tool, count, color)) in buttons.iter().enumerate() {
+        let btn_x = start_x + idx as f32 * (btn_size + spacing);
+        let is_active = selected_tool == Some(*tool);
+        let btn_color = if is_active {
+            Color::new(color.r as f32 / 255.0, color.g as f32 / 255.0, color.b as f32 / 255.0, 1.0)
+        } else if *count == 0 {
+            color_u8!(80, 80, 80, 200)
+        } else {
+            *color
+        };
+
+        // Base slot tile (placeholder for future item art)
+        draw_rectangle(btn_x, btn_start_y, btn_size, btn_size, btn_color);
+        let border_color = if is_active { YELLOW } else { WHITE };
+        let border_width = if is_active { 4.0 } else { 2.0 };
+        draw_rectangle_lines(btn_x, btn_start_y, btn_size, btn_size, border_width, border_color);
+
+        // Tiny neutral inset to suggest art frame area
+        draw_rectangle(
+            btn_x + btn_size * 0.18,
+            btn_start_y + btn_size * 0.18,
+            btn_size * 0.64,
+            btn_size * 0.50,
+            color_u8!(32, 38, 32, 160),
+        );
+
+        // Keep tiny code marker for now; easy to remove once icons are in.
+        draw_text(
+            label,
+            btn_x + btn_size * 0.08,
+            btn_start_y + btn_size * 0.92,
+            (font_sm * 0.85).max(10.0),
+            if *count == 0 { color_u8!(150, 150, 150, 255) } else { WHITE },
+        );
+
+        // Count badge in top-right corner
+        let badge_w = btn_size * 0.28;
+        let badge_h = btn_size * 0.28;
+        let badge_x = btn_x + btn_size - badge_w - btn_size * 0.05;
+        let badge_y = btn_start_y + btn_size * 0.05;
+        draw_rectangle(badge_x, badge_y, badge_w, badge_h, color_u8!(18, 24, 18, 235));
+        draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.5, color_u8!(220, 235, 210, 255));
+        draw_text(
+            &format!("{}", count),
+            badge_x + badge_w * 0.24,
+            badge_y + badge_h * 0.74,
+            (font_sm * 0.95).max(10.0),
+            color_u8!(230, 245, 220, 255),
+        );
+    }
+
+    draw_text("[I] Toggle", sw * 0.02, drawer_y + drawer_h * 0.66, (font_sm * 0.75).max(10.0), color_u8!(180, 200, 180, 190));
 }
 
 pub fn draw_hunt_screen() {
@@ -530,11 +646,10 @@ pub fn draw_playing_ui(
         WHITE,
     );
 
-    let chip_h = (row_h * 0.9).max(20.0);
-    let chip_w = layout.ui_panel_width * 0.17;
-    let chip_gap = layout.ui_panel_width * 0.018;
-    let chip_y = inv_title_y + row_h * 0.28;
-    let chip_font = (font_sm * 0.78).max(12.0);
+    let slot_size = (layout.ui_panel_width * 0.16).min(row_h * 0.98).max(20.0);
+    let slot_gap = layout.ui_panel_width * 0.018;
+    let slot_y = inv_title_y + row_h * 0.28;
+    let chip_font = (font_sm * 0.70).max(11.0);
     let inventory_chips = [
         (
             "CAN",
@@ -564,15 +679,38 @@ pub fn draw_playing_ui(
     ];
 
     for (index, (label, count, color)) in inventory_chips.iter().enumerate() {
-        let x = bar_x + index as f32 * (chip_w + chip_gap);
-        draw_rectangle(x, chip_y, chip_w, chip_h, *color);
-        draw_rectangle_lines(x, chip_y, chip_w, chip_h, 2.0, WHITE);
+        let x = bar_x + index as f32 * (slot_size + slot_gap);
+        draw_rectangle(x, slot_y, slot_size, slot_size, *color);
+        draw_rectangle_lines(x, slot_y, slot_size, slot_size, 2.0, WHITE);
+
+        draw_rectangle(
+            x + slot_size * 0.18,
+            slot_y + slot_size * 0.18,
+            slot_size * 0.64,
+            slot_size * 0.50,
+            color_u8!(32, 38, 32, 160),
+        );
+
         draw_text(
-            &format!("{}:{}", label, count),
-            x + chip_w * 0.08,
-            chip_y + chip_h * 0.72,
+            label,
+            x + slot_size * 0.08,
+            slot_y + slot_size * 0.92,
             chip_font,
             WHITE,
+        );
+
+        let badge_w = slot_size * 0.28;
+        let badge_h = slot_size * 0.28;
+        let badge_x = x + slot_size - badge_w - slot_size * 0.05;
+        let badge_y = slot_y + slot_size * 0.05;
+        draw_rectangle(badge_x, badge_y, badge_w, badge_h, color_u8!(18, 24, 18, 235));
+        draw_rectangle_lines(badge_x, badge_y, badge_w, badge_h, 1.5, color_u8!(220, 235, 210, 255));
+        draw_text(
+            &format!("{}", count),
+            badge_x + badge_w * 0.24,
+            badge_y + badge_h * 0.74,
+            (chip_font * 0.95).max(10.0),
+            color_u8!(230, 245, 220, 255),
         );
     }
 
