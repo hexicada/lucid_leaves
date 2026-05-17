@@ -39,7 +39,11 @@ pub fn pending_match_kind_at(pending_matches: &[MatchCell], x: usize, y: usize) 
 pub fn find_matches<const W: usize, const H: usize>(grid: &[[Tile; H]; W]) -> Vec<MatchCell> {
     let mut to_remove = vec![];
 
-    for y in 0..H {
+    if W == 0 || H == 0 {
+        return to_remove;
+    }
+
+    for (y, _) in grid[0].iter().enumerate() {
         for x in 0..W.saturating_sub(2) {
             let t1 = grid[x][y].kind;
             let t2 = grid[x + 1][y].kind;
@@ -52,7 +56,7 @@ pub fn find_matches<const W: usize, const H: usize>(grid: &[[Tile; H]; W]) -> Ve
         }
     }
 
-    for x in 0..W {
+    for (x, _) in grid.iter().enumerate() {
         for y in 0..H.saturating_sub(2) {
             let t1 = grid[x][y].kind;
             let t2 = grid[x][y + 1].kind;

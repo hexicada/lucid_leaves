@@ -65,6 +65,7 @@ async fn main() {
     let b1_leaf   = load_or_fallback("assets/biome1/leaf_sheet.png",   "assets/leaf_sheet.png").await;
     let b1_exotic = load_or_fallback("assets/lamp_sheet.png",          "assets/exotic_sheet.png").await;
     let b1_water  = load_or_fallback("assets/biome1/water_sheet.png",  "assets/water_sheet.png").await;
+    let b1_overlay = load_optional_texture("assets/cave_overlay.png").await;
 
     // Biome 2 — Volcanic Rift
     let b2_sun    = load_or_fallback("assets/biome2/sun_sheet.png",    "assets/beryl_sheet.png").await;
@@ -110,7 +111,7 @@ async fn main() {
 
     let biome_sets = vec![
         BiomeTextures { sun: b0_sun, moon: b0_moon, leaf: b0_leaf, exotic: b0_exotic, water: b0_water, overlay: b0_overlay },
-        BiomeTextures { sun: b1_sun, moon: b1_moon, leaf: b1_leaf, exotic: b1_exotic, water: b1_water, overlay: None },
+        BiomeTextures { sun: b1_sun, moon: b1_moon, leaf: b1_leaf, exotic: b1_exotic, water: b1_water, overlay: b1_overlay },
         BiomeTextures { sun: b2_sun, moon: b2_moon, leaf: b2_leaf, exotic: b2_exotic, water: b2_water, overlay: None },
         BiomeTextures { sun: b3_sun, moon: b3_moon, leaf: b3_leaf, exotic: b3_exotic, water: b3_water, overlay: None },
         BiomeTextures { sun: b4_sun, moon: b4_moon, leaf: b4_leaf, exotic: b4_exotic, water: b4_water, overlay: None },
@@ -132,6 +133,9 @@ async fn main() {
     );
     game.leaves_main_texture = Some(leaves_main);
     game.leaves_aux_texture = leaves_aux;
+    game.cave_grass_texture = load_optional_texture("assets/cave_overlay_grass.png").await;
+    game.cave_tree_texture  = load_optional_texture("assets/cave_overlay_tree.png").await;
+    game.cave_nast_texture  = load_optional_texture("assets/cave_overlay_nast.png").await;
 
     loop {
         game.update();

@@ -27,6 +27,28 @@ pub const LEAF_AUX_SWAY_PHASE: f32 = 1.35;
 pub const LEAF_AUX_SWAY_PIVOT_NX: f32 = 0.18;
 pub const LEAF_AUX_SWAY_PIVOT_NY: f32 = 0.18;
 
+// --- Cave sway constants (Deep Cave biome) ---
+pub const CAVE_GRASS_SWAY_SPEED: f32   = 0.90;  // Hz — fast, responsive to cave drafts
+pub const CAVE_GRASS_SWAY_SPEED_2: f32 = 1.40;  // Hz — secondary oscillator
+pub const CAVE_GRASS_SWAY_AMP_PX: f32  = 18.0;  // max pixel tip offset — base stays fixed
+pub const CAVE_GRASS_SWAY_PHASE: f32   = 0.0;
+pub const CAVE_GRASS_STRIP_COUNT: usize = 16;   // shear resolution — more = smoother bend
+
+pub const CAVE_TREE_SWAY_SPEED: f32    = 0.25;  // Hz — slow, heavy tree
+pub const CAVE_TREE_SWAY_SPEED_2: f32  = 0.42;
+pub const CAVE_TREE_SWAY_AMP_DEG: f32  = 0.55;
+pub const CAVE_TREE_SWAY_PHASE: f32    = 1.80;
+pub const CAVE_TREE_PIVOT_NX: f32      = 0.92;  // upper-right trunk base
+pub const CAVE_TREE_PIVOT_NY: f32      = 0.62;
+
+pub const CAVE_NAST_SWAY_SPEED: f32    = 0.55;  // Hz — medium nasturtium sway
+pub const CAVE_NAST_SWAY_SPEED_2: f32  = 0.82;
+pub const CAVE_NAST_SWAY_AMP_PX: f32   = 4.0;   // tip displacement in pixels
+pub const CAVE_NAST_SWAY_PHASE: f32    = 3.40;
+pub const CAVE_NAST_STRIP_ROWS: usize  = 14;    // vertical mesh resolution
+pub const CAVE_NAST_STRIP_COLS: usize  = 10;    // horizontal mesh resolution
+pub const CAVE_NAST_ANCHOR_START_NX: f32 = 0.72; // columns right of this stay near-static
+
 // --- Garden isometric grid positioning ---
 // Left lobe grid
 pub const ISO_TILE_HW: f32         = 48.0; // tile half-width in pixels
@@ -84,6 +106,9 @@ pub struct GameState {
     pub garden_bg_texture: Texture2D,
     pub leaves_main_texture: Option<Texture2D>,
     pub leaves_aux_texture: Option<Texture2D>,
+    pub cave_grass_texture: Option<Texture2D>,
+    pub cave_tree_texture: Option<Texture2D>,
+    pub cave_nast_texture: Option<Texture2D>,
 
     // Match juice state
     pub pending_matches: Vec<MatchCell>,
@@ -120,7 +145,11 @@ impl GameState {
     ) -> Self {
         debug_assert!(!biome_sets.is_empty(), "biome_sets must not be empty — GameState::new requires at least one BiomeTextures entry");
         let mut grid = [[Tile { kind: TileType::Empty, offset_y: 0.0 }; GRID_HEIGHT]; GRID_WIDTH];
-        for x in 0..GRID_WIDTH { for y in 0..GRID_HEIGHT { grid[x][y] = Tile::new_random(); }}
+        for column in grid.iter_mut() {
+            for tile in column.iter_mut() {
+                *tile = Tile::new_random();
+            }
+        }
 
         let mut game = GameState {
             grid,
@@ -129,6 +158,9 @@ impl GameState {
             garden_bg_texture,
             leaves_main_texture: None,
             leaves_aux_texture: None,
+            cave_grass_texture: None,
+            cave_tree_texture: None,
+            cave_nast_texture: None,
             pending_matches: vec![],
             particles: vec![],
             clear_timer: 0.0,

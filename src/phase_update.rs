@@ -188,48 +188,43 @@ impl GameState {
         
         match tool {
             GardenTool::Water => {
-                if inventory_count(&self.inventory, ItemType::WateringCan) > 0 {
-                    if plot.water() {
-                        if let Some(idx) = slot_idx {
-                            self.inventory.discard_one(idx);
-                        }
+                if inventory_count(&self.inventory, ItemType::WateringCan) > 0
+                    && plot.water() {
+                    if let Some(idx) = slot_idx {
+                        self.inventory.discard_one(idx);
                     }
                 }
             }
             GardenTool::PlantSun => {
-                if inventory_count(&self.inventory, ItemType::SeedDay) > 0 {
-                    if plot.plant(PlantType::DayBloom, now_unix) {
-                        if let Some(idx) = slot_idx {
-                            self.inventory.discard_one(idx);
-                        }
+                if inventory_count(&self.inventory, ItemType::SeedDay) > 0
+                    && plot.plant(PlantType::DayBloom, now_unix) {
+                    if let Some(idx) = slot_idx {
+                        self.inventory.discard_one(idx);
                     }
                 }
             }
             GardenTool::PlantMoon => {
-                if inventory_count(&self.inventory, ItemType::SeedNight) > 0 {
-                    if plot.plant(PlantType::NightBloom, now_unix) {
-                        if let Some(idx) = slot_idx {
-                            self.inventory.discard_one(idx);
-                        }
+                if inventory_count(&self.inventory, ItemType::SeedNight) > 0
+                    && plot.plant(PlantType::NightBloom, now_unix) {
+                    if let Some(idx) = slot_idx {
+                        self.inventory.discard_one(idx);
                     }
                 }
             }
             GardenTool::PlantEssence => {
-                if inventory_count(&self.inventory, ItemType::MoonbloomEssence) > 0 {
-                    if plot.plant(PlantType::DayBloom, now_unix) {
-                        if let Some(idx) = slot_idx {
-                            self.inventory.discard_one(idx);
-                        }
-                        plot.moonbloom_infused = true;
+                if inventory_count(&self.inventory, ItemType::MoonbloomEssence) > 0
+                    && plot.plant(PlantType::DayBloom, now_unix) {
+                    if let Some(idx) = slot_idx {
+                        self.inventory.discard_one(idx);
                     }
+                    plot.moonbloom_infused = true;
                 }
             }
             GardenTool::Fertilize => {
-                if inventory_count(&self.inventory, ItemType::Fertilizer) > 0 {
-                    if plot.fertilize() {
-                        if let Some(idx) = slot_idx {
-                            self.inventory.discard_one(idx);
-                        }
+                if inventory_count(&self.inventory, ItemType::Fertilizer) > 0
+                    && plot.fertilize() {
+                    if let Some(idx) = slot_idx {
+                        self.inventory.discard_one(idx);
                     }
                 }
             }

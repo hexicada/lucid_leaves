@@ -18,6 +18,24 @@ use crate::game_state::{
     LEAF_SWAY_SPEED_2,
     LEVELS_PER_SET,
     MATCH_CLEAR_DELAY,
+    CAVE_GRASS_SWAY_SPEED,
+    CAVE_GRASS_SWAY_SPEED_2,
+    CAVE_GRASS_SWAY_AMP_PX,
+    CAVE_GRASS_SWAY_PHASE,
+    CAVE_GRASS_STRIP_COUNT,
+    CAVE_TREE_SWAY_SPEED,
+    CAVE_TREE_SWAY_SPEED_2,
+    CAVE_TREE_SWAY_AMP_DEG,
+    CAVE_TREE_SWAY_PHASE,
+    CAVE_TREE_PIVOT_NX,
+    CAVE_TREE_PIVOT_NY,
+    CAVE_NAST_SWAY_SPEED,
+    CAVE_NAST_SWAY_SPEED_2,
+    CAVE_NAST_SWAY_AMP_PX,
+    CAVE_NAST_SWAY_PHASE,
+    CAVE_NAST_STRIP_ROWS,
+    CAVE_NAST_STRIP_COLS,
+    CAVE_NAST_ANCHOR_START_NX,
 };
 use crate::inventory::{Inventory, ItemType};
 use crate::match_logic;
@@ -75,13 +93,92 @@ fn draw_inventory_slot(
     let border_width = if is_active { 4.0 } else { 2.0 };
     draw_rectangle_lines(x, y, size, size, border_width, border_color);
 
+    let icon_x = x + size * 0.18;
+    let icon_y = y + size * 0.16;
+    let icon_w = size * 0.64;
+    let icon_h = size * 0.56;
+
     draw_rectangle(
-        x + size * 0.18,
-        y + size * 0.18,
-        size * 0.64,
-        size * 0.50,
+        icon_x,
+        icon_y,
+        icon_w,
+        icon_h,
         color_u8!(32, 38, 32, 160),
     );
+
+    let icon_alpha = if is_enabled { 1.0 } else { 0.55 };
+    let with_alpha = |c: Color| Color::new(c.r, c.g, c.b, c.a * icon_alpha);
+    let icon_cx = icon_x + icon_w * 0.5;
+    let icon_cy = icon_y + icon_h * 0.5;
+
+    match label {
+        "CAN" => {
+            let body = with_alpha(color_u8!(162, 202, 232, 255));
+            draw_rectangle(icon_x + icon_w * 0.18, icon_y + icon_h * 0.28, icon_w * 0.46, icon_h * 0.46, body);
+            draw_rectangle(icon_x + icon_w * 0.24, icon_y + icon_h * 0.18, icon_w * 0.34, icon_h * 0.10, body);
+            draw_line(
+                icon_x + icon_w * 0.58,
+                icon_y + icon_h * 0.30,
+                icon_x + icon_w * 0.82,
+                icon_y + icon_h * 0.22,
+                2.0,
+                body,
+            );
+            draw_circle(icon_x + icon_w * 0.84, icon_y + icon_h * 0.23, 2.0, with_alpha(color_u8!(86, 154, 214, 255)));
+        }
+        "SUN" => {
+            let sun = with_alpha(color_u8!(250, 219, 104, 255));
+            for i in 0..8 {
+                let a = i as f32 * std::f32::consts::TAU / 8.0;
+                let r0 = icon_w * 0.20;
+                let r1 = icon_w * 0.34;
+                draw_line(
+                    icon_cx + a.cos() * r0,
+                    icon_cy + a.sin() * r0,
+                    icon_cx + a.cos() * r1,
+                    icon_cy + a.sin() * r1,
+                    2.0,
+                    sun,
+                );
+            }
+            draw_circle(icon_cx, icon_cy, icon_w * 0.18, sun);
+        }
+        "MON" => {
+            let moon = with_alpha(color_u8!(170, 200, 255, 255));
+            draw_circle(icon_cx, icon_cy, icon_w * 0.22, moon);
+            draw_circle(
+                icon_cx + icon_w * 0.10,
+                icon_cy - icon_h * 0.02,
+                icon_w * 0.20,
+                color_u8!(32, 38, 32, 255),
+            );
+        }
+        "ESS" => {
+            let gem = with_alpha(color_u8!(205, 124, 250, 255));
+            let top = vec2(icon_cx, icon_y + icon_h * 0.14);
+            let right = vec2(icon_x + icon_w * 0.80, icon_cy);
+            let bottom = vec2(icon_cx, icon_y + icon_h * 0.86);
+            let left = vec2(icon_x + icon_w * 0.20, icon_cy);
+            draw_triangle(top, right, bottom, gem);
+            draw_triangle(top, bottom, left, with_alpha(color_u8!(172, 92, 222, 255)));
+            draw_line(top.x, top.y, bottom.x, bottom.y, 1.5, with_alpha(WHITE));
+        }
+        "FERT" => {
+            let sack = with_alpha(color_u8!(176, 130, 90, 255));
+            draw_rectangle(icon_x + icon_w * 0.24, icon_y + icon_h * 0.30, icon_w * 0.52, icon_h * 0.50, sack);
+            draw_triangle(
+                vec2(icon_x + icon_w * 0.24, icon_y + icon_h * 0.30),
+                vec2(icon_x + icon_w * 0.50, icon_y + icon_h * 0.12),
+                vec2(icon_x + icon_w * 0.76, icon_y + icon_h * 0.30),
+                with_alpha(color_u8!(154, 112, 76, 255)),
+            );
+            draw_circle(icon_x + icon_w * 0.44, icon_y + icon_h * 0.56, 1.6, with_alpha(color_u8!(88, 62, 34, 255)));
+            draw_circle(icon_x + icon_w * 0.56, icon_y + icon_h * 0.60, 1.6, with_alpha(color_u8!(88, 62, 34, 255)));
+        }
+        _ => {
+            draw_circle(icon_cx, icon_cy, icon_w * 0.20, with_alpha(WHITE));
+        }
+    }
 
     draw_text(
         label,
@@ -791,6 +888,100 @@ pub fn draw_board_and_effects(state: &GameState, layout: &Layout) {
                     ..Default::default()
                 },
             );
+        }
+    }
+
+    // --- Animated cave overlays (Deep Cave biome) ---
+    if set_idx == 1 {
+        let sw = screen_width();
+        let sh = screen_height();
+        let t = get_time() as f32;
+        let tau = std::f32::consts::TAU;
+
+        // Grass — horizontal shear: each strip shifts more toward the top so the
+        // roots stay perfectly anchored while only the tips sway.
+        if let Some(ref grass_tex) = state.cave_grass_texture {
+            let sway_px = (t * CAVE_GRASS_SWAY_SPEED * tau + CAVE_GRASS_SWAY_PHASE).sin() * CAVE_GRASS_SWAY_AMP_PX
+                + (t * CAVE_GRASS_SWAY_SPEED_2 * tau + CAVE_GRASS_SWAY_PHASE).sin() * CAVE_GRASS_SWAY_AMP_PX * 0.30;
+            let tex_w = grass_tex.width();
+            let tex_h = grass_tex.height();
+            let n = CAVE_GRASS_STRIP_COUNT;
+            let strip_src_h = tex_h / n as f32;
+            let strip_dst_h = sh / n as f32;
+            for i in 0..n {
+                // blend = 1.0 at top strip (max sway), 0.0 at bottom strip (rooted)
+                let blend = 1.0 - (i as f32 / (n - 1) as f32);
+                let offset_x = sway_px * blend.powf(1.8); // nonlinear — tips lead
+                draw_texture_ex(
+                    grass_tex,
+                    offset_x,
+                    i as f32 * strip_dst_h,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(sw, strip_dst_h)),
+                        source: Some(Rect::new(0.0, i as f32 * strip_src_h, tex_w, strip_src_h)),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        // Tree — slow, small arc, pivoting at upper-right trunk base
+        if let Some(ref tree_tex) = state.cave_tree_texture {
+            let sway_deg = (t * CAVE_TREE_SWAY_SPEED * tau + CAVE_TREE_SWAY_PHASE).sin() * CAVE_TREE_SWAY_AMP_DEG
+                + (t * CAVE_TREE_SWAY_SPEED_2 * tau + CAVE_TREE_SWAY_PHASE).sin() * CAVE_TREE_SWAY_AMP_DEG * 0.35;
+            draw_texture_ex(
+                tree_tex,
+                0.0,
+                0.0,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(sw, sh)),
+                    rotation: sway_deg * std::f32::consts::PI / 180.0,
+                    pivot: Some(vec2(sw * CAVE_TREE_PIVOT_NX, sh * CAVE_TREE_PIVOT_NY)),
+                    ..Default::default()
+                },
+            );
+        }
+
+        // Nasturtiums — localized mesh shear so the right-side vertical section
+        // stays anchored while upper/leafy regions sway.
+        if let Some(ref nast_tex) = state.cave_nast_texture {
+            let sway_px = (t * CAVE_NAST_SWAY_SPEED * tau + CAVE_NAST_SWAY_PHASE).sin() * CAVE_NAST_SWAY_AMP_PX
+                + (t * CAVE_NAST_SWAY_SPEED_2 * tau + CAVE_NAST_SWAY_PHASE).sin() * CAVE_NAST_SWAY_AMP_PX * 0.40;
+            let tex_w = nast_tex.width();
+            let tex_h = nast_tex.height();
+            let rows = CAVE_NAST_STRIP_ROWS;
+            let cols = CAVE_NAST_STRIP_COLS;
+            let src_h = tex_h / rows as f32;
+            let src_w = tex_w / cols as f32;
+            let dst_h = sh / rows as f32;
+            let dst_w = sw / cols as f32;
+
+            for row in 0..rows {
+                let y_norm = (row as f32 + 0.5) / rows as f32;
+                let top_blend = (1.0 - y_norm).powf(1.7);
+
+                for col in 0..cols {
+                    let x_norm = (col as f32 + 0.5) / cols as f32;
+                    let anchor_t = ((x_norm - CAVE_NAST_ANCHOR_START_NX) / (1.0 - CAVE_NAST_ANCHOR_START_NX)).clamp(0.0, 1.0);
+                    // Smoothstep from swaying zone (left) into anchored zone (right).
+                    let right_anchor = 1.0 - (anchor_t * anchor_t * (3.0 - 2.0 * anchor_t));
+                    let offset_x = sway_px * top_blend * right_anchor;
+
+                    draw_texture_ex(
+                        nast_tex,
+                        col as f32 * dst_w + offset_x,
+                        row as f32 * dst_h,
+                        WHITE,
+                        DrawTextureParams {
+                            dest_size: Some(vec2(dst_w, dst_h)),
+                            source: Some(Rect::new(col as f32 * src_w, row as f32 * src_h, src_w, src_h)),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
         }
     }
 }
