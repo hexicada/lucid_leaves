@@ -9,6 +9,7 @@ target/
 # Runtime/editor logs
 /debug.log
 *.log
+/dev_save.txt
 
 # Sprite backup exports
 *_sheetold.png
